@@ -19,19 +19,21 @@ import * as configApi from './config.js';
 vi.mock(import('./styles.js'), () => {
   return {
     addStylesForDiagram: vi.fn(),
-    default: vi.fn().mockReturnValue(' .userStyle { font-weight:bold; }'),
+    default: vi.fn().mockImplementation(
+      (_type, userStyles, _options) => `
+    & .edge-pattern-dashed{
+      stroke-dasharray: 3;
+    }
+
+    ${userStyles}
+    `
+    ),
   };
 });
 
 import getStyles from './styles.js';
 
-vi.mock(import('stylis'), () => {
-  return {
-    stringify: vi.fn(),
-    compile: vi.fn(),
-    serialize: vi.fn().mockReturnValue('stylis serialized css'),
-  };
-});
+vi.mock(import('stylis'), { spy: true });
 
 import { compile, serialize } from 'stylis';
 import { Diagram } from './Diagram.js';
@@ -423,7 +425,7 @@ describe('mermaidAPI', () => {
       const result = createUserStyles(mockConfig, 'someDiagram', new Map(), 'someId');
       expect(compile).toHaveBeenCalled();
       expect(serialize).toHaveBeenCalled();
-      expect(result).toEqual('stylis serialized css');
+      expect(result).toEqual('someId .edge-pattern-dashed{stroke-dasharray:3;}');
     });
   });
 
