@@ -4,6 +4,10 @@ import type { DiagramStylesProvider } from './diagram-api/types.js';
 
 const themes: Record<string, DiagramStylesProvider> = {};
 
+export function cssStyleSheetToString(cssStyleSheet: CSSStyleSheet): string {
+  return [...cssStyleSheet.cssRules].map((rule) => rule.cssText).join('\n');
+}
+
 const getStyles = (
   type: string,
   userStyles: string,
