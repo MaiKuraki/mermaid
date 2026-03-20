@@ -22,7 +22,13 @@ import { log, setLogLevel } from './logger.js';
 import { preprocessDiagram } from './preprocess.js';
 import getStyles from './styles.js';
 import theme from './themes/index.js';
-import type { D3Element, ParseOptions, ParseResult, RenderResult } from './types.js';
+import type {
+  D3HtmlSelection,
+  D3Selection,
+  ParseOptions,
+  ParseResult,
+  RenderResult,
+} from './types.js';
 import { decodeEntities } from './utils.js';
 import { toBase64 } from './utils/base64.js';
 import { sanitizeCss } from './utils/sanitizeDirective.js';
@@ -216,7 +222,7 @@ export const cleanUpSvgCode = (
  * @param svgElement - the d3 node that has the current svgElement so we can get the height from it
  * @returns  - the code with the iFrame that now contains the svgCode
  */
-export const putIntoIFrame = (svgCode = '', svgElement?: D3Element): string => {
+export const putIntoIFrame = (svgCode = '', svgElement?: SVGSVGElement): string => {
   const height = svgElement?.viewBox?.baseVal?.height
     ? svgElement.viewBox.baseVal.height + 'px'
     : IFRAME_HEIGHT;
@@ -240,12 +246,12 @@ export const putIntoIFrame = (svgCode = '', svgElement?: D3Element): string => {
  * @returns - returns the parentRoot that had nodes appended
  */
 export const appendDivSvgG = (
-  parentRoot: D3Element,
+  parentRoot: D3HtmlSelection<HTMLElement> | D3HtmlSelection<Element>,
   id: string,
   enclosingDivId: string,
   divStyle?: string,
   svgXlink?: string
-): D3Element => {
+) => {
   const enclosingDiv = parentRoot.append('div');
   enclosingDiv.attr('id', enclosingDivId);
   if (divStyle) {
@@ -273,7 +279,10 @@ export const appendDivSvgG = (
  * @param iFrameId - id to use for the iFrame
  * @returns the appended iframe d3 node
  */
-function sandboxedIframe(parentNode: D3Element, iFrameId: string): D3Element {
+function sandboxedIframe(
+  parentNode: D3HtmlSelection<Element> | D3HtmlSelection<HTMLElement>,
+  iFrameId: string
+) {
   return parentNode
     .append('iframe')
     .attr('id', iFrameId)
@@ -343,7 +352,7 @@ const render = async function (
     }
   };
 
-  let root: any = select('body');
+  let root: D3HtmlSelection<HTMLElement> | D3HtmlSelection<Element> = select(document.body);
 
   const isSandboxed = config.securityLevel === SECURITY_LVL_SANDBOX;
   const isLooseSecurityLevel = config.securityLevel === SECURITY_LVL_LOOSE;
@@ -362,8 +371,8 @@ const render = async function (
     if (isSandboxed) {
       // If we are in sandboxed mode, we do everything mermaid related in a (sandboxed )iFrame
       const iframe = sandboxedIframe(select(svgContainingElement), iFrameID);
-      root = select(iframe.nodes()[0]!.contentDocument!.body);
-      root.node().style.margin = 0;
+      root = select(iframe.nodes()[0].contentDocument!.body);
+      root.node()!.style.margin = '0';
     } else {
       root = select(svgContainingElement);
     }
@@ -379,9 +388,9 @@ const render = async function (
 
     if (isSandboxed) {
       // If we are in sandboxed mode, we do everything mermaid related in a (sandboxed) iFrame
-      const iframe = sandboxedIframe(select('body'), iFrameID);
-      root = select(iframe.nodes()[0]!.contentDocument!.body);
-      root.node().style.margin = 0;
+      const iframe = sandboxedIframe(select(document.body), iFrameID);
+      root = select(iframe.nodes()[0].contentDocument!.body);
+      root.node()!.style.margin = '0';
     } else {
       root = select('body');
     }
@@ -408,14 +417,14 @@ const render = async function (
   }
 
   // Get the temporary div element containing the svg
-  const element = root.select(enclosingDivID_selector).node();
+  const element = root.select<HTMLDivElement>(enclosingDivID_selector).node()!;
   const diagramType = diag.type;
 
   // -------------------------------------------------------------------------------
   // Create and insert the styles (user styles, theme styles, config styles)
 
   // Insert an element into svg. This is where we put the styles
-  const svg = element.firstChild;
+  const svg = element.firstChild!;
   const firstChild = svg.firstChild;
   const diagramClassDefs = diag.renderer.getClasses?.(text, diag);
 
@@ -439,7 +448,7 @@ const render = async function (
   }
 
   // This is the d3 node for the svg element
-  const svgNode = root.select(`${enclosingDivID_selector} svg`);
+  const svgNode = root.select<SVGSVGElement>(`${enclosingDivID_selector} svg`);
   const a11yTitle: string | undefined = diag.db.getAccTitle?.();
   const a11yDescr: string | undefined = diag.db.getAccDescription?.();
   addA11yInfo(diagramType, svgNode, a11yTitle, a11yDescr);
@@ -448,13 +457,13 @@ const render = async function (
   root.select(`[id="${id}"]`).selectAll('foreignobject > *').attr('xmlns', XMLNS_XHTML_STD);
 
   // Fix for when the base tag is used
-  let svgCode: string = root.select(enclosingDivID_selector).node().innerHTML;
+  let svgCode: string = root.select<HTMLDivElement>(enclosingDivID_selector).node()!.innerHTML;
 
   log.debug('config.arrowMarkerAbsolute', config.arrowMarkerAbsolute);
   svgCode = cleanUpSvgCode(svgCode, isSandboxed, evaluate(config.arrowMarkerAbsolute));
 
   if (isSandboxed) {
-    const svgEl = root.select(enclosingDivID_selector + ' svg').node();
+    const svgEl = root.select<SVGSVGElement>(enclosingDivID_selector + ' svg').node()!;
     svgCode = putIntoIFrame(svgCode, svgEl);
   } else if (!isLooseSecurityLevel) {
     // Sanitize the svgCode using DOMPurify
@@ -527,7 +536,7 @@ const getDiagramFromText = (text: string, metadata: Pick<DiagramMetadata, 'title
  */
 function addA11yInfo(
   diagramType: string,
-  svgNode: D3Element,
+  svgNode: D3Selection<SVGSVGElement>,
   a11yTitle?: string,
   a11yDescr?: string
 ): void {

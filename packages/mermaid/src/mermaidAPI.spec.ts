@@ -181,13 +181,10 @@ describe('mermaidAPI', () => {
     });
 
     it('uses the height and appends px from the svgElement given', () => {
-      const faux_svgElement = {
-        viewBox: {
-          baseVal: {
-            height: 42,
-          },
-        },
-      };
+      const faux_svgElement = vi.mockObject(
+        document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      );
+      vi.spyOn(faux_svgElement.viewBox.baseVal, 'height', 'get').mockReturnValue(42);
 
       const result = putIntoIFrame(inputSvgCode, faux_svgElement);
       expect(result).toMatch(/style="(.*)height:42px;/);
