@@ -1118,6 +1118,7 @@ You have to call mermaid.initialize.`
         cssClasses: subGraph.classes.join(' '),
         shape: 'rect',
         dir: subGraph.dir,
+        explicitDir: !!subGraph.dir, // true only when the user wrote an explicit 'direction X' keyword
         isGroup: true,
         look: config.look,
       });

@@ -346,7 +346,7 @@ export const extractor = (graph, depth) => {
     if (!clusterDb.has(node)) {
       log.debug('Not a cluster', node, depth);
     } else if (
-      clusterDb.get(node)?.clusterData?.dir &&
+      clusterDb.get(node)?.clusterData?.explicitDir &&
       graph.children(node) &&
       graph.children(node).length > 0
     ) {
