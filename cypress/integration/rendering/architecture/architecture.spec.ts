@@ -382,7 +382,7 @@ describe('architecture - fcose layout knobs', () => {
 });
 
 describe('architecture - align directive', () => {
-  it('should render three same-port databases without overlap when aligned in a row', () => {
+  it('should stack three same-port databases in a column without overlap', () => {
     imgSnapshotTest(
       `architecture-beta
         group api(cloud)[API]
@@ -393,20 +393,22 @@ describe('architecture - align directive', () => {
         db1:R --> L:mcp
         db2:R --> L:mcp
         db3:R --> L:mcp
-        align row db1 db2 db3
+        align column db1 db2 db3
       `
     );
   });
 
-  it('should render aligned siblings in a column', () => {
+  it('should align siblings in a row when their edges feed a common downstream node', () => {
     imgSnapshotTest(
       `architecture-beta
-        service top(server)[Top]
-        service mid(server)[Mid]
-        service bot(server)[Bot]
-        top:B -- T:mid
-        mid:B -- T:bot
-        align column top mid bot
+        service src1(server)[Source 1]
+        service src2(server)[Source 2]
+        service src3(server)[Source 3]
+        service proc(server)[Processor]
+        src1:B --> T:proc
+        src2:B --> T:proc
+        src3:B --> T:proc
+        align row src1 src2 src3
       `
     );
   });

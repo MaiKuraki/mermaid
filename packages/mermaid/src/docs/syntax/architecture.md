@@ -136,6 +136,13 @@ align column {idA} {idB} ...
 
 Members must already be declared as services or junctions, and at least two members are required. Each `align` directive lives on its own line.
 
+Pick the axis based on how the listed members are connected:
+
+- Use **`align column`** when the members connect to a common downstream node *via the same horizontal port pair* (e.g. all use `R --> L:mcp`). They naturally form a vertical stack to one side, with parallel arrows reaching the downstream node.
+- Use **`align row`** when the members connect to a common downstream node *via the same vertical port pair* (e.g. all use `B --> T:proc`). They naturally form a horizontal row above the downstream node.
+
+Three databases all feeding `mcp` via right-to-left edges → stack them in a column:
+
 ```mermaid-example
 architecture-beta
     group api(cloud)[API]
@@ -146,7 +153,21 @@ architecture-beta
     db1:R --> L:mcp
     db2:R --> L:mcp
     db3:R --> L:mcp
-    align row db1 db2 db3
+    align column db1 db2 db3
+```
+
+Three sources all feeding `proc` via top-to-bottom edges → arrange them in a row:
+
+```mermaid-example
+architecture-beta
+    service src1(server)[Source 1]
+    service src2(server)[Source 2]
+    service src3(server)[Source 3]
+    service proc(server)[Processor]
+    src1:B --> T:proc
+    src2:B --> T:proc
+    src3:B --> T:proc
+    align row src1 src2 src3
 ```
 
 The order of members in the `align` directive determines their order along the axis. The gap between aligned members is controlled by `idealEdgeLengthMultiplier`.
