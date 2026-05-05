@@ -186,7 +186,7 @@ mermaid.initialize({
 | ----------- | ------- | ------- | ---------------------------------------------------------------------- |
 | `randomize` | boolean | `false` | Whether to randomize initial node positions before running the layout. |
 
-### Layout tuning (v11.15.0+)
+### Layout tuning (v<MERMAID_RELEASE_VERSION>+)
 
 When sibling services in the same group share similar edge topology — for example, three databases all connecting `B --> T:mcp` — the underlying [fcose](https://github.com/iVis-at-Bilkent/cytoscape.js-fcose) layout has no signal to spread them apart and they may overlap. The following options expose fcose tunables so you can adjust the layout without changing your diagram source:
 
