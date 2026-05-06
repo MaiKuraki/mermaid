@@ -1,0 +1,387 @@
+// cspell:ignore Hegemann Wolff raykov
+import { log } from '../../../../logger.js';
+
+const EPS = 1e-3;
+const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
+
+/**
+ * Stale port-offset Z-edge straightener (iter 7).
+ *
+ * Scans 4-point polylines for a short H-V-H (or V-H-V) "Z-jog" pattern
+ * where one endpoint has a perpendicular offset from its node's center
+ * that matches raykov's port-distribution output. When the jog can be
+ * safely straightened — either by aligning with an adjacent collinear
+ * incident edge at the shared endpoint (preferred) or by shifting to
+ * node center (fallback) — the edge is rewritten as a straight line.
+ *
+ * Paper-backed by the Hegemann-Wolff paper (source b65b3d45, Fig. 11b
+ * discussion) which names this class of cleanup. The LP-based "full
+ * nudging" phase described there achieves the same effect globally via
+ * zero-separation constraints on same-path segments; this function is
+ * a local Mermaid proxy.
+ *
+ * Safety: the straightened polyline must not overlap foreign real
+ * nodes (3u buffer) or any anchored label rect (produced by
+ * `anchorLabelsToPolyline`). If any safety check fails, the edge is
+ * left unchanged.
+ */
+export function straightenStalePortOffsets(edges: any[], nodeByIdMap: Map<string, any>): void {
+  const JOG_MAX = 20; // matches raykov MAX_PORT_SPACING
+  const NODE_BUFFER = 3;
+  const LABEL_BUFFER = 3;
+  const EDGE_BUFFER = 2;
+
+  interface RectLite {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+  }
+
+  // Collect foreign real-node rects (excluding labels and groups).
+  const realNodeRects: { id: string; rect: RectLite }[] = [];
+  const labelRects: { id: string; rect: RectLite }[] = [];
+  for (const n of nodeByIdMap.values()) {
+    const isGroup = (n as { isGroup?: boolean }).isGroup;
+    if (isGroup) {
+      continue;
+    }
+    const cx = (n as { x?: number }).x ?? 0;
+    const cy = (n as { y?: number }).y ?? 0;
+    const w = (n as { width?: number }).width ?? 0;
+    const h = (n as { height?: number }).height ?? 0;
+    if (w <= 0 || h <= 0) {
+      continue;
+    }
+    const rect: RectLite = {
+      left: cx - w / 2,
+      right: cx + w / 2,
+      top: cy - h / 2,
+      bottom: cy + h / 2,
+    };
+    const id = String((n as { id?: string }).id ?? '');
+    if ((n as { isEdgeLabel?: boolean }).isEdgeLabel) {
+      labelRects.push({ id, rect });
+    } else {
+      realNodeRects.push({ id, rect });
+    }
+  }
+
+  // Collect all edge segments for edge-on-edge overlap checking.
+  interface SegLite {
+    edgeId: string;
+    a: { x: number; y: number };
+    b: { x: number; y: number };
+  }
+  const allSegments: SegLite[] = [];
+  for (const other of edges) {
+    if ((other as { isLayoutOnly?: boolean }).isLayoutOnly) {
+      continue;
+    }
+    const opts = (other as { points?: { x: number; y: number }[] }).points;
+    if (!opts || opts.length < 2) {
+      continue;
+    }
+    const eid = String((other as { id?: string }).id ?? '');
+    for (let i = 0; i < opts.length - 1; i++) {
+      allSegments.push({ edgeId: eid, a: opts[i], b: opts[i + 1] });
+    }
+  }
+
+  const segHitsRect = (
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+    r: RectLite,
+    buffer: number
+  ): boolean => {
+    const segMinX = Math.min(a.x, b.x);
+    const segMaxX = Math.max(a.x, b.x);
+    const segMinY = Math.min(a.y, b.y);
+    const segMaxY = Math.max(a.y, b.y);
+    return (
+      segMaxX > r.left - buffer &&
+      segMinX < r.right + buffer &&
+      segMaxY > r.top - buffer &&
+      segMinY < r.bottom + buffer
+    );
+  };
+
+  // Collinear-incident-at-shared-node lookup for neighbor alignment.
+  // Given a node and an axis ('y' for horizontal neighbors, 'x' for vertical),
+  // return the coordinate of a collinear incident edge if one exists.
+  const findCollinearNeighborCoord = (
+    nodeId: string,
+    excludeEdgeId: string,
+    axis: 'y' | 'x'
+  ): number | undefined => {
+    for (const other of edges) {
+      if ((other as { isLayoutOnly?: boolean }).isLayoutOnly) {
+        continue;
+      }
+      const oid = String((other as { id?: string }).id ?? '');
+      if (oid === excludeEdgeId) {
+        continue;
+      }
+      const opts = (other as { points?: { x: number; y: number }[] }).points;
+      if (!opts || opts.length < 2) {
+        continue;
+      }
+      const oStart = (other as { start?: string }).start;
+      const oEnd = (other as { end?: string }).end;
+      // Use the segment incident to the shared node.
+      let incidentSeg: { a: { x: number; y: number }; b: { x: number; y: number } } | undefined;
+      if (oStart === nodeId) {
+        incidentSeg = { a: opts[0], b: opts[1] };
+      } else if (oEnd === nodeId) {
+        incidentSeg = { a: opts[opts.length - 1], b: opts[opts.length - 2] };
+      } else {
+        continue;
+      }
+      // If the incident segment is collinear on the requested axis,
+      // return that axis coordinate.
+      if (axis === 'y' && Math.abs(incidentSeg.a.y - incidentSeg.b.y) < EPS) {
+        return incidentSeg.a.y;
+      }
+      if (axis === 'x' && Math.abs(incidentSeg.a.x - incidentSeg.b.x) < EPS) {
+        return incidentSeg.a.x;
+      }
+    }
+    return undefined;
+  };
+
+  // The core straightener. For each edge with a 4-point H-V-H or V-H-V
+  // polyline, decide if it can be collapsed to a straight 2-point line.
+  for (const edge of edges) {
+    if ((edge as { isLayoutOnly?: boolean }).isLayoutOnly) {
+      continue;
+    }
+    const pts = (edge as { points?: { x: number; y: number }[] }).points;
+    if (!pts || pts.length !== 4) {
+      continue;
+    }
+    const [p0, p1, p2, p3] = pts;
+    const startId = (edge as { start?: string }).start;
+    const endId = (edge as { end?: string }).end;
+    const edgeId = String((edge as { id?: string }).id ?? '');
+    if (!startId || !endId) {
+      continue;
+    }
+    const startNode = nodeByIdMap.get(startId);
+    const endNode = nodeByIdMap.get(endId);
+    if (!startNode || !endNode) {
+      continue;
+    }
+    const startRect: RectLite = {
+      left: (startNode.x ?? 0) - (startNode.width ?? 0) / 2,
+      right: (startNode.x ?? 0) + (startNode.width ?? 0) / 2,
+      top: (startNode.y ?? 0) - (startNode.height ?? 0) / 2,
+      bottom: (startNode.y ?? 0) + (startNode.height ?? 0) / 2,
+    };
+    const endRect: RectLite = {
+      left: (endNode.x ?? 0) - (endNode.width ?? 0) / 2,
+      right: (endNode.x ?? 0) + (endNode.width ?? 0) / 2,
+      top: (endNode.y ?? 0) - (endNode.height ?? 0) / 2,
+      bottom: (endNode.y ?? 0) + (endNode.height ?? 0) / 2,
+    };
+
+    // Identify the pattern: H-V-H or V-H-V with a short middle segment.
+    const seg01H = Math.abs(p0.y - p1.y) < EPS && Math.abs(p0.x - p1.x) > EPS;
+    const seg12V = Math.abs(p1.x - p2.x) < EPS && Math.abs(p1.y - p2.y) > EPS;
+    const seg23H = Math.abs(p2.y - p3.y) < EPS && Math.abs(p2.x - p3.x) > EPS;
+    const seg01V = Math.abs(p0.x - p1.x) < EPS && Math.abs(p0.y - p1.y) > EPS;
+    const seg12H = Math.abs(p1.y - p2.y) < EPS && Math.abs(p1.x - p2.x) > EPS;
+    const seg23V = Math.abs(p2.x - p3.x) < EPS && Math.abs(p2.y - p3.y) > EPS;
+
+    const isHVH = seg01H && seg12V && seg23H;
+    const isVHV = seg01V && seg12H && seg23V;
+    if (!isHVH && !isVHV) {
+      continue;
+    }
+    // Middle segment length check.
+    const middleLen = isHVH ? Math.abs(p2.y - p1.y) : Math.abs(p2.x - p1.x);
+    if (middleLen > JOG_MAX) {
+      continue;
+    }
+
+    // Determine target coordinate for the straightened line.
+    // Preference order: (a) neighbor alignment at either endpoint,
+    // (b) shift whichever endpoint is farther from its node's center.
+    let targetCoord: number | undefined;
+    let shiftStart = false;
+    if (isHVH) {
+      // Straighten to a single y. p0.y and p3.y differ by middleLen.
+      const startNeighborY = findCollinearNeighborCoord(startId, edgeId, 'y');
+      const endNeighborY = findCollinearNeighborCoord(endId, edgeId, 'y');
+      const startCy = startNode.y ?? 0;
+      const endCy = endNode.y ?? 0;
+      // Prefer neighbor alignment if a collinear neighbor exists at
+      // the corresponding endpoint's matching y (within EPS of that
+      // endpoint's y).
+      if (startNeighborY !== undefined && Math.abs(startNeighborY - p0.y) < EPS) {
+        // Start endpoint already aligned with its neighbor; shift end.
+        targetCoord = p0.y;
+        shiftStart = false;
+      } else if (endNeighborY !== undefined && Math.abs(endNeighborY - p3.y) < EPS) {
+        targetCoord = p3.y;
+        shiftStart = true;
+      } else {
+        // Fallback: shift whichever endpoint is farther from its node's center.
+        const startOff = Math.abs(p0.y - startCy);
+        const endOff = Math.abs(p3.y - endCy);
+        if (endOff >= startOff) {
+          targetCoord = p0.y;
+          shiftStart = false;
+        } else {
+          targetCoord = p3.y;
+          shiftStart = true;
+        }
+      }
+    } else {
+      // V-H-V mirror: straighten to a single x.
+      const startNeighborX = findCollinearNeighborCoord(startId, edgeId, 'x');
+      const endNeighborX = findCollinearNeighborCoord(endId, edgeId, 'x');
+      const startCx = startNode.x ?? 0;
+      const endCx = endNode.x ?? 0;
+      if (startNeighborX !== undefined && Math.abs(startNeighborX - p0.x) < EPS) {
+        targetCoord = p0.x;
+        shiftStart = false;
+      } else if (endNeighborX !== undefined && Math.abs(endNeighborX - p3.x) < EPS) {
+        targetCoord = p3.x;
+        shiftStart = true;
+      } else {
+        const startOff = Math.abs(p0.x - startCx);
+        const endOff = Math.abs(p3.x - endCx);
+        if (endOff >= startOff) {
+          targetCoord = p0.x;
+          shiftStart = false;
+        } else {
+          targetCoord = p3.x;
+          shiftStart = true;
+        }
+      }
+    }
+
+    if (targetCoord === undefined) {
+      continue;
+    }
+
+    // Construct the proposed straight line.
+    const newStart = shiftStart
+      ? isHVH
+        ? { x: p0.x, y: targetCoord }
+        : { x: targetCoord, y: p0.y }
+      : { x: p0.x, y: p0.y };
+    const newEnd = shiftStart
+      ? { x: p3.x, y: p3.y }
+      : isHVH
+        ? { x: p3.x, y: targetCoord }
+        : { x: targetCoord, y: p3.y };
+
+    // Safety check: the shifted endpoint's axis coordinate must stay
+    // within the node's span on the relevant side. The endpoint clip
+    // pass (which runs after this one) will snap the point onto the
+    // boundary exactly; we only need to know that the node can accept
+    // the approach direction at the target coordinate.
+    if (isHVH) {
+      const rect = shiftStart ? startRect : endRect;
+      if (targetCoord < rect.top - 0.5 || targetCoord > rect.bottom + 0.5) {
+        continue;
+      }
+    } else {
+      const rect = shiftStart ? startRect : endRect;
+      if (targetCoord < rect.left - 0.5 || targetCoord > rect.right + 0.5) {
+        continue;
+      }
+    }
+
+    // Safety check: straightened line must not overlap foreign real nodes.
+    let overlapsNode = false;
+    for (const { id: nid, rect } of realNodeRects) {
+      if (nid === startId || nid === endId) {
+        continue;
+      }
+      if (segHitsRect(newStart, newEnd, rect, NODE_BUFFER)) {
+        overlapsNode = true;
+        break;
+      }
+    }
+    if (overlapsNode) {
+      continue;
+    }
+
+    // Safety check: straightened line must not overlap any anchored label rect.
+    let overlapsLabel = false;
+    for (const { rect } of labelRects) {
+      if (segHitsRect(newStart, newEnd, rect, LABEL_BUFFER)) {
+        overlapsLabel = true;
+        break;
+      }
+    }
+    if (overlapsLabel) {
+      continue;
+    }
+
+    // Safety check: straightened line must not come within EDGE_BUFFER
+    // of any other edge's segment.
+    let hugsEdge = false;
+    for (const seg of allSegments) {
+      if (seg.edgeId === edgeId) {
+        continue;
+      }
+      // Approximate: treat other segment as a tiny rect and see if the
+      // new line is too close. Use a 1-unit inflation on the other seg
+      // and require our new line + EDGE_BUFFER separation.
+      const oMinX = Math.min(seg.a.x, seg.b.x) - EDGE_BUFFER;
+      const oMaxX = Math.max(seg.a.x, seg.b.x) + EDGE_BUFFER;
+      const oMinY = Math.min(seg.a.y, seg.b.y) - EDGE_BUFFER;
+      const oMaxY = Math.max(seg.a.y, seg.b.y) + EDGE_BUFFER;
+      const nMinX = Math.min(newStart.x, newEnd.x);
+      const nMaxX = Math.max(newStart.x, newEnd.x);
+      const nMinY = Math.min(newStart.y, newEnd.y);
+      const nMaxY = Math.max(newStart.y, newEnd.y);
+      if (nMaxX > oMinX && nMinX < oMaxX && nMaxY > oMinY && nMinY < oMaxY) {
+        // Overlap in bounding box — check if segments are collinear
+        // (acceptable, same flow) vs perpendicular crossing.
+        const newIsH = Math.abs(newStart.y - newEnd.y) < EPS;
+        const othIsH = Math.abs(seg.a.y - seg.b.y) < EPS;
+        if (newIsH === othIsH) {
+          // Parallel. A hug would require the other segment to share
+          // or nearly share the axis coordinate. For collinear along
+          // the flow (e.g. L_E_G_0 + L_G_F_0 both at y=240 through G),
+          // they touch only at the shared endpoint — that's fine.
+          // Reject only if there's a non-endpoint overlap.
+          const shareAxis = newIsH
+            ? Math.abs(newStart.y - seg.a.y) < EPS
+            : Math.abs(newStart.x - seg.a.x) < EPS;
+          if (shareAxis) {
+            // Check for non-endpoint x (or y) overlap.
+            const overlapLo = newIsH
+              ? Math.max(nMinX, Math.min(seg.a.x, seg.b.x))
+              : Math.max(nMinY, Math.min(seg.a.y, seg.b.y));
+            const overlapHi = newIsH
+              ? Math.min(nMaxX, Math.max(seg.a.x, seg.b.x))
+              : Math.min(nMaxY, Math.max(seg.a.y, seg.b.y));
+            if (overlapHi - overlapLo > EPS) {
+              hugsEdge = true;
+              break;
+            }
+          }
+        } else {
+          // Perpendicular — any bbox overlap is a true crossing.
+          hugsEdge = true;
+          break;
+        }
+      }
+    }
+    if (hugsEdge) {
+      continue;
+    }
+
+    // Apply the straightening.
+    (edge as { points: { x: number; y: number }[] }).points = [newStart, newEnd];
+    log.debug(
+      SWIMLANE_DIR_LOG_PREFIX,
+      `straightenStalePortOffsets: collapsed ${edgeId} — ${shiftStart ? 'shifted start' : 'shifted end'} to ${targetCoord}`
+    );
+  }
+}
