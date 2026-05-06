@@ -17,170 +17,20 @@
  *
  * Structure mirrors query-process.ddlt.spec.ts — the canonical DDLT pattern.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { describe, it, expect } from 'vitest';
 import type { LayoutData } from '../../types.js';
-import { Diagram } from '../../../Diagram.js';
-import { addDiagrams } from '../../../diagram-api/diagram-orchestration.js';
-import { preprocessDiagram } from '../../../preprocess.js';
-import { toGraphView, writeBackToLayoutData } from './helpers.js';
-import { sugiyamaLayout } from './pipeline.js';
-import { routeEdgesOrthogonal } from './raykovGemini/raykov.js';
-import { applySwimlaneDirectionTransform } from './direction.js';
-import { createEdgeLabelNodes } from './edgeLabelNodes.js';
 import { validateLayout } from '../layout-utils/validateLayout.js';
-import { loadFreshSizesFixture } from '../ddlt/fixtureSizes.js';
+import { loadDdltFixture } from '../ddlt/loadDdltFixture.js';
 
-interface FixtureNode {
-  id: string;
-  width: number;
-  height: number;
-}
+const FIXTURE_ID = 'swimlanes/5-car-fun-sales-wide-tb';
 
-interface SizesFixture {
-  nodes: FixtureNode[];
-}
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const FIXTURE_PATH = resolve(
-  __dirname,
-  '../../../../../../cypress/platform/dev-diagrams/layout-tests/swimlanes/5-car-fun-sales-wide-tb.sizes.json'
-);
-
-const MMD_PATH = resolve(
-  __dirname,
-  '../../../../../../cypress/platform/dev-diagrams/layout-tests/swimlanes/5-car-fun-sales-wide-tb.mmd'
-);
-
-function loadFixture(): SizesFixture {
-  return loadFreshSizesFixture(FIXTURE_PATH, MMD_PATH, 'swimlanes/5-car-fun-sales-wide-tb');
-}
-
-function fixtureSizeById(fixture: SizesFixture, id: string) {
-  return fixture.nodes.find((n) => n.id === id);
-}
-
-async function parseLayout(): Promise<LayoutData> {
-  const mmdText = readFileSync(MMD_PATH, 'utf-8');
-  const { code } = preprocessDiagram(mmdText);
-  const diagram = await Diagram.fromText(code);
-  const layoutData = (diagram.db as { getData: () => LayoutData }).getData();
-
-  const getDirection = (diagram.db as { getDirection?: () => string }).getDirection;
-  const direction = getDirection?.call(diagram.db) ?? 'TB';
-  (layoutData as LayoutData & { direction?: string }).direction = direction;
-
-  const cfg = (layoutData.config ??= {} as LayoutData['config']);
-  const flowchartCfg = ((cfg as { flowchart?: Record<string, unknown> }).flowchart ??= {});
-  flowchartCfg.nodeSpacing = (flowchartCfg.nodeSpacing as number | undefined) ?? 40;
-  flowchartCfg.rankSpacing = (flowchartCfg.rankSpacing as number | undefined) ?? 100;
-  flowchartCfg.ignoreCrossLaneEdges = true;
-  flowchartCfg.optimizeRanksByCrossings = true;
-
-  return layoutData;
-}
-
-function applyCapturedContentSizes(layout: LayoutData, fixture: SizesFixture) {
-  for (const node of layout.nodes) {
-    if (node.isGroup) {
-      continue;
-    }
-    const size = fixtureSizeById(fixture, node.id);
-    if (!size) {
-      throw new Error(
-        `Fixture is missing size for parser-produced content node "${node.id}". ` +
-          `Known fixture ids: ${fixture.nodes.map((n) => n.id).join(', ')}`
-      );
-    }
-    (node as { width: number; height: number }).width = size.width;
-    (node as { width: number; height: number }).height = size.height;
-  }
-}
-
-function applyCapturedLabelSizes(layout: LayoutData, fixture: SizesFixture) {
-  for (const node of layout.nodes) {
-    if (!(node as { isEdgeLabel?: boolean }).isEdgeLabel) {
-      continue;
-    }
-    const size = fixtureSizeById(fixture, node.id);
-    if (!size) {
-      throw new Error(
-        `Fixture is missing size for parser-produced label node "${node.id}". ` +
-          `The fixture must contain edge-label-<start>-<end>-<edgeId> for every ` +
-          `labelled edge produced by the parser.`
-      );
-    }
-    (node as { width: number; height: number }).width = size.width;
-    (node as { width: number; height: number }).height = size.height;
-  }
-}
-
-async function runSwimlanes(fixture: SizesFixture): Promise<LayoutData> {
-  const parsed = await parseLayout();
-  applyCapturedContentSizes(parsed, fixture);
-
-  const { data } = createEdgeLabelNodes(parsed);
-  const layout = data;
-  (layout as LayoutData & { direction?: string }).direction = (
-    parsed as LayoutData & { direction?: string }
-  ).direction;
-  applyCapturedLabelSizes(layout, fixture);
-
-  const g = toGraphView(layout);
-  const nodeGap = layout.config.flowchart?.nodeSpacing ?? 40;
-  const layerGap = layout.config.flowchart?.rankSpacing ?? 100;
-
-  // Mirror `swimlanes/index.ts:render` — use the fixture's real
-  // direction, not a hardcoded 'LR'. TD fixtures go through a
-  // different pipeline than LR fixtures: specifically every
-  // cleanup pass in `applySwimlaneDirectionTransform` is gated
-  // behind `if (direction !== 'LR') return`, so for TD fixtures
-  // those passes never run and the browser sees raw raykov output.
-  const direction = ((layout as LayoutData & { direction?: string }).direction ?? 'TB') as
-    | 'TB'
-    | 'LR'
-    | 'BT'
-    | 'RL';
-
-  const { ordered, coordinates } = sugiyamaLayout(g, {
-    nodeGap,
-    layerGap,
-    sweeps: 3,
-    useTranspose: true,
-    heuristic: 'median',
-    cycleHeuristic: 'dfs',
-    straightenLongEdges: true,
-    ignoreCrossLaneEdges: true,
-    optimizeRanksByCrossings: true,
-    direction,
-  });
-
-  writeBackToLayoutData(g, ordered, coordinates, { nodeGap, layerGap });
-
-  for (const edge of layout.edges ?? []) {
-    delete (edge as { points?: unknown }).points;
-  }
-
-  routeEdgesOrthogonal(layout, direction);
-  applySwimlaneDirectionTransform(layout, direction);
-
-  return layout;
+async function runSwimlanes(): Promise<LayoutData> {
+  return await loadDdltFixture(FIXTURE_ID, { backendId: 'swimlanes' });
 }
 
 describe('Swimlanes DDLT — 5-car-fun-sales-wide-tb.mmd', () => {
-  let fixture: SizesFixture;
-
-  beforeAll(() => {
-    addDiagrams();
-    fixture = loadFixture();
-  });
-
   it('Level 1: validateLayout — produces a valid orthogonal layout', async () => {
-    const layout = await runSwimlanes(fixture);
+    const layout = await runSwimlanes();
     const result = validateLayout(layout);
     if (!result.ok) {
       console.log(
@@ -210,7 +60,7 @@ describe('Swimlanes DDLT — 5-car-fun-sales-wide-tb.mmd', () => {
     // the (D.top, E.top) candidate is rejected and L_D_E_0 stays with
     // its raykov-produced detour (4 bends instead of 2 — Level-2 cost
     // worth paying for Level-1 correctness).
-    const layout = await runSwimlanes(fixture);
+    const layout = await runSwimlanes();
     const lde = (layout.edges ?? []).find((e) => e.id === 'L_D_E_0');
     const lef = (layout.edges ?? []).find((e) => e.id === 'L_E_F_0');
     expect(lde).toBeDefined();
@@ -259,7 +109,7 @@ describe('Swimlanes DDLT — 5-car-fun-sales-wide-tb.mmd', () => {
     //
     // This pin locks the FIX SHAPE — future iterations re-tuning raykov
     // must not silently re-introduce the east detour.
-    const layout = await runSwimlanes(fixture);
+    const layout = await runSwimlanes();
     const lde = (layout.edges ?? []).find((e) => e.id === 'L_D_E_0');
     expect(lde).toBeDefined();
     const pts = (lde as { points?: { x: number; y: number }[] }).points ?? [];
@@ -327,7 +177,7 @@ describe('Swimlanes DDLT — 5-car-fun-sales-wide-tb.mmd', () => {
     // joint-feasibility via port distribution rather than face
     // exclusion. Mermaid-specific narrowing: we only rescue the
     // exact 4-point-U-around-nothing shape, to minimize blast radius.
-    const layout = await runSwimlanes(fixture);
+    const layout = await runSwimlanes();
     const ldh = (layout.edges ?? []).find((e) => e.id === 'L_D_H_0');
     expect(ldh).toBeDefined();
     const pts = (ldh as { points?: { x: number; y: number }[] }).points ?? [];
@@ -347,7 +197,7 @@ describe('Swimlanes DDLT — 5-car-fun-sales-wide-tb.mmd', () => {
   });
 
   it('Level 2: validateLayout — quality breakdown is within reasonable thresholds', async () => {
-    const layout = await runSwimlanes(fixture);
+    const layout = await runSwimlanes();
     const { breakdown } = validateLayout(layout);
     const totalBends = breakdown.edges.reduce((acc, e) => acc + Math.max(0, e.points - 2), 0);
     const avgBendsPerEdge = breakdown.edgeCount > 0 ? totalBends / breakdown.edgeCount : 0;

@@ -12,48 +12,12 @@
  *
  * Structure mirrors `simple-2.ddlt.spec.ts` / `query-process.ddlt.spec.ts`.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { describe, it, expect } from 'vitest';
 import type { LayoutData } from '../../types.js';
-import { Diagram } from '../../../Diagram.js';
-import { addDiagrams } from '../../../diagram-api/diagram-orchestration.js';
-import { preprocessDiagram } from '../../../preprocess.js';
-import { toGraphView, writeBackToLayoutData } from './helpers.js';
-import { sugiyamaLayout } from './pipeline.js';
-import { routeEdgesOrthogonal } from './raykovGemini/raykov.js';
-import { applySwimlaneDirectionTransform } from './direction.js';
-import { createEdgeLabelNodes } from './edgeLabelNodes.js';
 import { validateLayout } from '../layout-utils/validateLayout.js';
-import { loadFreshSizesFixture } from '../ddlt/fixtureSizes.js';
+import { loadDdltFixture } from '../ddlt/loadDdltFixture.js';
 
-interface FixtureNode {
-  id: string;
-  width: number;
-  height: number;
-}
-
-interface SizesFixture {
-  nodes: FixtureNode[];
-}
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const FIXTURE_PATH = resolve(
-  __dirname,
-  '../../../../../../cypress/platform/dev-diagrams/layout-tests/swimlanes/8-query-process-2.sizes.json'
-);
-
-const MMD_PATH = resolve(
-  __dirname,
-  '../../../../../../cypress/platform/dev-diagrams/layout-tests/swimlanes/8-query-process-2.mmd'
-);
-
-function loadFixture(): SizesFixture {
-  return loadFreshSizesFixture(FIXTURE_PATH, MMD_PATH, 'swimlanes/8-query-process-2');
-}
+const FIXTURE_ID = 'swimlanes/8-query-process-2';
 
 function dedupeConsecutive(pts: { x: number; y: number }[]): { x: number; y: number }[] {
   const EPS = 1e-6;
@@ -67,121 +31,13 @@ function dedupeConsecutive(pts: { x: number; y: number }[]): { x: number; y: num
   return result;
 }
 
-function fixtureSizeById(fixture: SizesFixture, id: string) {
-  return fixture.nodes.find((n) => n.id === id);
-}
-
-async function parseLayout(): Promise<LayoutData> {
-  const mmdText = readFileSync(MMD_PATH, 'utf-8');
-  const { code } = preprocessDiagram(mmdText);
-  const diagram = await Diagram.fromText(code);
-  const layoutData = (diagram.db as { getData: () => LayoutData }).getData();
-
-  const getDirection = (diagram.db as { getDirection?: () => string }).getDirection;
-  const direction = getDirection?.call(diagram.db) ?? 'TB';
-  (layoutData as LayoutData & { direction?: string }).direction = direction;
-
-  const cfg = (layoutData.config ??= {} as LayoutData['config']);
-  const flowchartCfg = ((cfg as { flowchart?: Record<string, unknown> }).flowchart ??= {});
-  flowchartCfg.nodeSpacing = (flowchartCfg.nodeSpacing as number | undefined) ?? 40;
-  flowchartCfg.rankSpacing = (flowchartCfg.rankSpacing as number | undefined) ?? 100;
-  flowchartCfg.ignoreCrossLaneEdges = true;
-  flowchartCfg.optimizeRanksByCrossings = true;
-
-  return layoutData;
-}
-
-function applyCapturedContentSizes(layout: LayoutData, fixture: SizesFixture) {
-  for (const node of layout.nodes) {
-    if (node.isGroup) {
-      continue;
-    }
-    const size = fixtureSizeById(fixture, node.id);
-    if (!size) {
-      throw new Error(
-        `Fixture is missing size for parser-produced content node "${node.id}". ` +
-          `Known fixture ids: ${fixture.nodes.map((n) => n.id).join(', ')}`
-      );
-    }
-    (node as { width: number; height: number }).width = size.width;
-    (node as { width: number; height: number }).height = size.height;
-  }
-}
-
-function applyCapturedLabelSizes(layout: LayoutData, fixture: SizesFixture) {
-  for (const node of layout.nodes) {
-    if (!(node as { isEdgeLabel?: boolean }).isEdgeLabel) {
-      continue;
-    }
-    const size = fixtureSizeById(fixture, node.id);
-    if (!size) {
-      throw new Error(
-        `Fixture is missing size for parser-produced label node "${node.id}". ` +
-          `The fixture must contain edge-label-<start>-<end>-<edgeId> for every ` +
-          `labelled edge produced by the parser.`
-      );
-    }
-    (node as { width: number; height: number }).width = size.width;
-    (node as { width: number; height: number }).height = size.height;
-  }
-}
-
-async function runSwimlanes(fixture: SizesFixture): Promise<LayoutData> {
-  const parsed = await parseLayout();
-  applyCapturedContentSizes(parsed, fixture);
-
-  const { data } = createEdgeLabelNodes(parsed);
-  const layout = data;
-  (layout as LayoutData & { direction?: string }).direction = (
-    parsed as LayoutData & { direction?: string }
-  ).direction;
-  applyCapturedLabelSizes(layout, fixture);
-
-  const g = toGraphView(layout);
-  const nodeGap = layout.config.flowchart?.nodeSpacing ?? 40;
-  const layerGap = layout.config.flowchart?.rankSpacing ?? 100;
-
-  const direction = ((layout as LayoutData & { direction?: string }).direction ?? 'TB') as
-    | 'TB'
-    | 'LR'
-    | 'BT'
-    | 'RL';
-
-  const { ordered, coordinates } = sugiyamaLayout(g, {
-    nodeGap,
-    layerGap,
-    sweeps: 3,
-    useTranspose: true,
-    heuristic: 'median',
-    cycleHeuristic: 'dfs',
-    straightenLongEdges: true,
-    ignoreCrossLaneEdges: true,
-    optimizeRanksByCrossings: true,
-    direction,
-  });
-
-  writeBackToLayoutData(g, ordered, coordinates, { nodeGap, layerGap });
-
-  for (const edge of layout.edges ?? []) {
-    delete (edge as { points?: unknown }).points;
-  }
-
-  routeEdgesOrthogonal(layout, direction);
-  applySwimlaneDirectionTransform(layout, direction);
-
-  return layout;
+async function runSwimlanes(): Promise<LayoutData> {
+  return await loadDdltFixture(FIXTURE_ID, { backendId: 'swimlanes' });
 }
 
 describe('Swimlanes DDLT — 8-query-process-2.mmd', () => {
-  let fixture: SizesFixture;
-
-  beforeAll(() => {
-    addDiagrams();
-    fixture = loadFixture();
-  });
-
   it('Level 1: validateLayout — produces a valid orthogonal layout', async () => {
-    const layout = await runSwimlanes(fixture);
+    const layout = await runSwimlanes();
     const result = validateLayout(layout);
     if (!result.ok) {
       console.log(
@@ -222,7 +78,7 @@ describe('Swimlanes DDLT — 8-query-process-2.mmd', () => {
     // the last segment might be horizontal (hit from west/east) or
     // vertical (hit from south/north); either way, length >= 10u.
     const MIN_TERMINAL_STUB = 10;
-    const layout = await runSwimlanes(fixture);
+    const layout = await runSwimlanes();
     const edge = (layout.edges ?? []).find((e) => e.id === 'L_E_G_0');
     expect(edge).toBeDefined();
     const rawPts = (edge as { points?: { x: number; y: number }[] }).points ?? [];
@@ -256,7 +112,7 @@ describe('Swimlanes DDLT — 8-query-process-2.mmd', () => {
     // rule should be relaxed. The threshold (10) is conservative and
     // matches the mermaid arrowhead marker-length used in rendering.
     const MIN_TERMINAL_STUB = 10;
-    const layout = await runSwimlanes(fixture);
+    const layout = await runSwimlanes();
     const offenders: { id: string; lastLen: number }[] = [];
     for (const edge of layout.edges ?? []) {
       if ((edge as { isLayoutOnly?: boolean }).isLayoutOnly) {
@@ -314,7 +170,7 @@ describe('Swimlanes DDLT — 8-query-process-2.mmd', () => {
     // (paper src b65b3d45). Distinct from bend-stretching
     // (Eiglsperger et al. "first/last direction unchanged"), which does
     // not apply because we are CHANGING the first direction.
-    const layout = await runSwimlanes(fixture);
+    const layout = await runSwimlanes();
     const edge = (layout.edges ?? []).find((e) => e.id === 'L_A2_E_0');
     expect(edge).toBeDefined();
     const rawPts = (edge as { points?: { x: number; y: number }[] }).points ?? [];
@@ -374,7 +230,7 @@ describe('Swimlanes DDLT — 8-query-process-2.mmd', () => {
   });
 
   it('Level 2: validateLayout — quality breakdown is within reasonable thresholds', async () => {
-    const layout = await runSwimlanes(fixture);
+    const layout = await runSwimlanes();
     const { breakdown } = validateLayout(layout);
     const totalBends = breakdown.edges.reduce((acc, e) => acc + Math.max(0, e.points - 2), 0);
     const avgBendsPerEdge = breakdown.edgeCount > 0 ? totalBends / breakdown.edgeCount : 0;

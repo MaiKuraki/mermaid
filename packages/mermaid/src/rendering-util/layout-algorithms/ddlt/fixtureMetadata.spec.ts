@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { discoverLayoutTestFixtures } from './discoverFixtures.js';
 import { DDLT_SIZE_CAPTURE_VERSION, hashDdltFixtureSource } from './fixtureFreshness.js';
-import { readFileSync } from 'node:fs';
 
 describe('DDLT layout-test size fixture metadata', () => {
   it('requires every discovered swimlane captured-size fixture to match its current source', () => {
     // Scoped to `swimlanes/` until other slices (domus, …) land on this branch
-    // with their refreshed metadata blocks. `discoverLayoutTestFixtures` skips
-    // fixtures whose metadata is missing/stale; this spec asserts the swimlane
-    // ones are all fresh.
+    // with their refreshed metadata blocks. This protects DDLT from validating
+    // a layout against browser sizes captured for a different Mermaid source.
     const fixtures = discoverLayoutTestFixtures().filter((f) => f.id.startsWith('swimlanes/'));
     const staleOrLegacy = fixtures
       .map((fixture) => {

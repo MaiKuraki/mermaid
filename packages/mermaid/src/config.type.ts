@@ -339,6 +339,22 @@ export interface FlowchartDiagramConfig extends BaseDiagramConfig {
    */
   lineHops?: boolean | ('arc' | 'gap');
   /**
+   * Ignores edges that cross swimlane boundaries during swimlane layer assignment.
+   * This can improve rank quality for diagrams with many cross-lane links.
+   *
+   * **Only used by the experimental swimlanes layout.**
+   *
+   */
+  ignoreCrossLaneEdges?: boolean;
+  /**
+   * Enables a crossing-aware rank optimization pass for swimlane layouts.
+   * Defaults to the value of `ignoreCrossLaneEdges` when unspecified.
+   *
+   * **Only used by the experimental swimlanes layout.**
+   *
+   */
+  optimizeRanksByCrossings?: boolean;
+  /**
    * Represents the padding between the labels and the shape
    *
    * **Only used in new experimental rendering.**

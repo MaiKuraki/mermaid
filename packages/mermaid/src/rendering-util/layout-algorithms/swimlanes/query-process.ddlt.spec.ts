@@ -14,181 +14,20 @@
  * This spec is the canonical pattern for DDLT specs: never hand-construct
  * LayoutData — parse the `.mmd`.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { describe, it, expect } from 'vitest';
 import type { LayoutData } from '../../types.js';
-import { Diagram } from '../../../Diagram.js';
-import { addDiagrams } from '../../../diagram-api/diagram-orchestration.js';
-import { preprocessDiagram } from '../../../preprocess.js';
-import { toGraphView, writeBackToLayoutData } from './helpers.js';
-import { sugiyamaLayout } from './pipeline.js';
-import { routeEdgesOrthogonal } from './raykovGemini/raykov.js';
-import { applySwimlaneDirectionTransform } from './direction.js';
-import { createEdgeLabelNodes } from './edgeLabelNodes.js';
 import { validateLayout } from '../layout-utils/validateLayout.js';
-import { loadFreshSizesFixture } from '../ddlt/fixtureSizes.js';
+import { loadDdltFixture } from '../ddlt/loadDdltFixture.js';
 
-interface FixtureNode {
-  id: string;
-  width: number;
-  height: number;
-}
+const FIXTURE_ID = 'swimlanes/query-process';
 
-interface SizesFixture {
-  nodes: FixtureNode[];
-}
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const FIXTURE_PATH = resolve(
-  __dirname,
-  '../../../../../../cypress/platform/dev-diagrams/layout-tests/swimlanes/query-process.sizes.json'
-);
-
-const MMD_PATH = resolve(
-  __dirname,
-  '../../../../../../cypress/platform/dev-diagrams/layout-tests/swimlanes/query-process.mmd'
-);
-
-function loadFixture(): SizesFixture {
-  return loadFreshSizesFixture(FIXTURE_PATH, MMD_PATH, 'swimlanes/query-process');
-}
-
-function fixtureSizeById(fixture: SizesFixture, id: string) {
-  return fixture.nodes.find((n) => n.id === id);
-}
-
-async function parseQueryProcessLayout(): Promise<LayoutData> {
-  const mmdText = readFileSync(MMD_PATH, 'utf-8');
-  // Run preprocessDiagram so frontmatter (and %%{init}%% directives) are
-  // stripped before the JISON flow parser sees the code — mirrors what
-  // mermaidAPI does in production.
-  const { code } = preprocessDiagram(mmdText);
-  const diagram = await Diagram.fromText(code);
-  const layoutData = (diagram.db as { getData: () => LayoutData }).getData();
-
-  // Mirror flowRenderer-v3-unified: the renderer stamps direction from the DB
-  // onto the LayoutData before handing it to the layout algorithm.
-  const getDirection = (diagram.db as { getDirection?: () => string }).getDirection;
-  const direction = getDirection?.call(diagram.db) ?? 'TB';
-  (layoutData as LayoutData & { direction?: string }).direction = direction;
-
-  // Ensure swimlane-specific config flags are present. Production sets these
-  // via frontmatter / config; parsing the raw `.mmd` text applies default
-  // flowchart config, so we top up the flags the swimlane pipeline expects.
-  const cfg = (layoutData.config ??= {} as LayoutData['config']);
-  const flowchartCfg = ((cfg as { flowchart?: Record<string, unknown> }).flowchart ??= {});
-  flowchartCfg.nodeSpacing = (flowchartCfg.nodeSpacing as number | undefined) ?? 40;
-  flowchartCfg.rankSpacing = (flowchartCfg.rankSpacing as number | undefined) ?? 100;
-  flowchartCfg.ignoreCrossLaneEdges = true;
-  flowchartCfg.optimizeRanksByCrossings = true;
-
-  return layoutData;
-}
-
-function applyCapturedContentSizes(layout: LayoutData, fixture: SizesFixture) {
-  for (const node of layout.nodes) {
-    if (node.isGroup) {
-      continue;
-    }
-    const size = fixtureSizeById(fixture, node.id);
-    if (!size) {
-      throw new Error(
-        `Fixture is missing size for parser-produced content node "${node.id}". ` +
-          `Known fixture ids: ${fixture.nodes.map((n) => n.id).join(', ')}`
-      );
-    }
-    (node as { width: number; height: number }).width = size.width;
-    (node as { width: number; height: number }).height = size.height;
-  }
-}
-
-function applyCapturedLabelSizes(layout: LayoutData, fixture: SizesFixture) {
-  for (const node of layout.nodes) {
-    if (!(node as { isEdgeLabel?: boolean }).isEdgeLabel) {
-      continue;
-    }
-    const size = fixtureSizeById(fixture, node.id);
-    if (!size) {
-      throw new Error(
-        `Fixture is missing size for parser-produced label node "${node.id}". ` +
-          `The fixture must contain edge-label-<start>-<end>-<edgeId> for every ` +
-          `labelled edge produced by the parser.`
-      );
-    }
-    (node as { width: number; height: number }).width = size.width;
-    (node as { width: number; height: number }).height = size.height;
-  }
-}
-
-async function runQueryProcessSwimlanes(fixture: SizesFixture): Promise<LayoutData> {
-  const parsed = await parseQueryProcessLayout();
-  applyCapturedContentSizes(parsed, fixture);
-
-  const { data } = createEdgeLabelNodes(parsed);
-  const layout = data;
-  // Preserve direction across the new LayoutData returned by createEdgeLabelNodes.
-  (layout as LayoutData & { direction?: string }).direction = (
-    parsed as LayoutData & { direction?: string }
-  ).direction;
-  applyCapturedLabelSizes(layout, fixture);
-
-  const g = toGraphView(layout);
-  const nodeGap = layout.config.flowchart?.nodeSpacing ?? 40;
-  const layerGap = layout.config.flowchart?.rankSpacing ?? 100;
-
-  // Mirror `swimlanes/index.ts:render`: use the fixture's actual
-  // direction from `getDirection()`. query-process.mmd is
-  // `flowchart LR`, so this resolves to 'LR' — but taking the
-  // value from the parsed data (instead of hardcoding) keeps this
-  // spec faithful to the real renderer and portable to other
-  // fixtures with different directions.
-  const direction = ((layout as LayoutData & { direction?: string }).direction ?? 'TB') as
-    | 'TB'
-    | 'LR'
-    | 'BT'
-    | 'RL';
-
-  const { ordered, coordinates } = sugiyamaLayout(g, {
-    nodeGap,
-    layerGap,
-    sweeps: 3,
-    useTranspose: true,
-    heuristic: 'median',
-    cycleHeuristic: 'dfs',
-    straightenLongEdges: true,
-    ignoreCrossLaneEdges: true,
-    optimizeRanksByCrossings: true,
-    direction,
-  });
-
-  writeBackToLayoutData(g, ordered, coordinates, { nodeGap, layerGap });
-
-  // Mirror swimlanes/index.ts: clear sugiyama's edge polylines so the
-  // orthogonal router fully owns the final routing.
-  for (const edge of layout.edges ?? []) {
-    delete (edge as { points?: unknown }).points;
-  }
-
-  routeEdgesOrthogonal(layout, direction);
-  applySwimlaneDirectionTransform(layout, direction);
-
-  return layout;
+async function runQueryProcessSwimlanes(): Promise<LayoutData> {
+  return await loadDdltFixture(FIXTURE_ID, { backendId: 'swimlanes' });
 }
 
 describe('Swimlanes DDLT — query-process.mmd', () => {
-  let fixture: SizesFixture;
-
-  beforeAll(() => {
-    addDiagrams();
-    fixture = loadFixture();
-  });
-
   it('Level 1: validateLayout — produces a valid orthogonal layout', async () => {
-    const layout = await runQueryProcessSwimlanes(fixture);
+    const layout = await runQueryProcessSwimlanes();
     const result = validateLayout(layout);
     if (!result.ok) {
       console.log(
@@ -207,7 +46,7 @@ describe('Swimlanes DDLT — query-process.mmd', () => {
     // obstacle set while routing E→G, so E→G cut straight through it. With
     // the fix, only an edge's own label is excluded; foreign labels remain
     // obstacles and the router detours around them.
-    const layout = await runQueryProcessSwimlanes(fixture);
+    const layout = await runQueryProcessSwimlanes();
     const result = validateLayout(layout);
     const foreignLabelIssues = result.issues.filter(
       (issue) =>
@@ -233,7 +72,7 @@ describe('Swimlanes DDLT — query-process.mmd', () => {
     // is an edge-label node. Result: A2's south-side port group was empty,
     // no offsets were distributed, and both edges departed at the same
     // center attach point and ran collinear for 142.3 units.
-    const layout = await runQueryProcessSwimlanes(fixture);
+    const layout = await runQueryProcessSwimlanes();
     const result = validateLayout(layout);
     const a2DepartureIssues = result.issues.filter(
       (issue) =>
@@ -267,7 +106,7 @@ describe('Swimlanes DDLT — query-process.mmd', () => {
     //   (b) Collinear intermediate: no triple (prev, cur, next) where all
     //       three lie on the same axis AND cur is strictly between prev
     //       and next. The middle point is redundant.
-    const layout = await runQueryProcessSwimlanes(fixture);
+    const layout = await runQueryProcessSwimlanes();
     const EPS = 1e-6;
     interface Offender {
       edgeId: string;
@@ -314,7 +153,7 @@ describe('Swimlanes DDLT — query-process.mmd', () => {
     // only 0.925u below the E-F label's visual bottom (y=251.04) — for
     // 22.84u. Inflating edge-label obstacles in the router's internal view
     // pushes any valid route clear of the label's visual border.
-    const layout = await runQueryProcessSwimlanes(fixture);
+    const layout = await runQueryProcessSwimlanes();
     const result = validateLayout(layout);
     const labelHugIssues = result.issues.filter(
       (issue) =>
@@ -332,7 +171,7 @@ describe('Swimlanes DDLT — query-process.mmd', () => {
   });
 
   it('Level 2: validateLayout — quality breakdown is within reasonable thresholds', async () => {
-    const layout = await runQueryProcessSwimlanes(fixture);
+    const layout = await runQueryProcessSwimlanes();
     const { breakdown } = validateLayout(layout);
     const totalBends = breakdown.edges.reduce((acc, e) => acc + Math.max(0, e.points - 2), 0);
     const avgBendsPerEdge = breakdown.edgeCount > 0 ? totalBends / breakdown.edgeCount : 0;
@@ -360,7 +199,7 @@ describe('Swimlanes DDLT — query-process.mmd', () => {
     // as "within EPS of the axis-aligned infinite line of the segment, and
     // strictly inside the segment's extent". Zero-length segments are
     // ignored.
-    const layout = await runQueryProcessSwimlanes(fixture);
+    const layout = await runQueryProcessSwimlanes();
     const EPS = 1;
     const nodeById = new Map<string, { x?: number; y?: number }>();
     for (const n of layout.nodes) {
@@ -459,7 +298,7 @@ describe('Swimlanes DDLT — query-process.mmd', () => {
     //           was a stale port offset from a sibling group dissolved
     //           by iter-5's simplifyDetouredEdges)
     // cspell:ignore Hegemann
-    const layout = await runQueryProcessSwimlanes(fixture);
+    const layout = await runQueryProcessSwimlanes();
     const { breakdown } = validateLayout(layout);
     const totalBends = breakdown.edges.reduce((acc, e) => acc + Math.max(0, e.points - 2), 0);
     expect(totalBends).toBeLessThanOrEqual(6);
@@ -479,7 +318,7 @@ describe('Swimlanes DDLT — query-process.mmd', () => {
     // The query-process.mmd fixture was updated (mid-session 2026-04-16)
     // to use F2 as a separate node for the G→F2 branch, so the edge id
     // is now `L_G_F2_0`. Check both in case the fixture swaps back.
-    const layout = await runQueryProcessSwimlanes(fixture);
+    const layout = await runQueryProcessSwimlanes();
     const gfEdge =
       (layout.edges ?? []).find((e) => e.id === 'L_G_F2_0') ??
       (layout.edges ?? []).find((e) => e.id === 'L_G_F_0');
@@ -517,7 +356,7 @@ describe('Swimlanes DDLT — query-process.mmd', () => {
     // different faces (one horizontal first-segment, one vertical)
     // OR they share a face with port centers ≥ δ_s apart.
     const MIN_PORT_SPACING = 8;
-    const layout = await runQueryProcessSwimlanes(fixture);
+    const layout = await runQueryProcessSwimlanes();
     const a2ToE = (layout.edges ?? []).find((e) => e.id === 'L_A2_E_0');
     const a2ToB = (layout.edges ?? []).find((e) => e.id === 'L_A2_B_0');
     expect(a2ToE).toBeDefined();

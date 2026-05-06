@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import * as configApi from '../../../config.js';
 import { getConfig } from '../../../diagram-api/diagramAPI.js';
 import type { LayoutData } from '../../types.js';
 import { Diagram } from '../../../Diagram.js';
@@ -18,7 +19,9 @@ export async function parseMmdFileToLayoutData(
   options: ParseToLayoutDataOptions = {}
 ): Promise<LayoutData> {
   const mmdText = readFileSync(mmdPath, 'utf-8');
-  const { code } = preprocessDiagram(mmdText);
+  const { code, config } = preprocessDiagram(mmdText);
+  configApi.reset();
+  configApi.addDirective(config ?? {});
   const diagram = await Diagram.fromText(code);
   const layoutData = (diagram.db as { getData: () => LayoutData }).getData();
 

@@ -1,3 +1,4 @@
+import { log } from '../../../logger.js';
 import type { LayoutData, Node as MermaidNode, Edge as MermaidEdge } from '../../types.js';
 
 // Core aliases used by the Sugiyama pipeline
@@ -318,9 +319,7 @@ export function writeBackToLayoutData(
         }
       }
 
-      // Debug: record how swimlane lanes are sized and positioned.
-
-      console.debug('SWIMLANE_DEBUG layout lanes', {
+      log.debug('SWIMLANE_DEBUG layout lanes', {
         globalMinY,
         globalMaxY,
         contentHeight,
