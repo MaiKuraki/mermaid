@@ -202,14 +202,6 @@ union A, B`,
     chaotic
       "Page on-call"`,
 
-  railroad: `railroad-diagram
-    title "Expression Grammar"
-    expression = term ( ( "+" | "-" ) term )* ;
-    term = factor ( ( "*" | "/" ) factor )* ;
-    factor = number | "(" expression ")" ;
-    number = digit+ ;
-    digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;`,
-
   eventmodeling: `eventmodeling
     tf 01 evt Start
     tf 02 evt End

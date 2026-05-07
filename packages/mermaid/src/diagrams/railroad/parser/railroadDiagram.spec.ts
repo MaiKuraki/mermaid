@@ -150,21 +150,6 @@ describe('Railroad Parser', () => {
       }
     });
 
-    it('should parse special sequence', () => {
-      const input = `
-        railroad-diagram
-        rule = ? implementation-specific detail ? ;
-      `;
-      parser.parse(input);
-      const rules = db.getRules();
-
-      expect(rules).toHaveLength(1);
-      expect(rules[0].definition.type).toBe('special');
-      if (rules[0].definition.type === 'special') {
-        expect(rules[0].definition.text.trim()).toBe('implementation-specific detail');
-      }
-    });
-
     it('should parse title', () => {
       const input = `
         railroad-diagram

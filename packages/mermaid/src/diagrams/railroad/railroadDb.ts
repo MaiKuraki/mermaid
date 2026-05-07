@@ -1,4 +1,5 @@
 import type { ASTNode, RailroadDB, RailroadRule } from './railroadTypes.js';
+import { getConfig as getGlobalConfig } from '../../diagram-api/diagramAPI.js';
 import { log } from '../../logger.js';
 import { clear as commonClear } from '../common/commonDb.js';
 import { sanitizeText as commonSanitizeText } from '../common/common.js';

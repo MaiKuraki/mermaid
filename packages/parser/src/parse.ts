@@ -16,7 +16,7 @@ import type {
   TreeView,
   Wardley,
   Cynefin,
-} from './index.js';
+} from './language/index.js';
 
 export type DiagramAST =
   | Info
