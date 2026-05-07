@@ -45,7 +45,7 @@ jobs:
           npm set registry https://npm.pkg.github.com/mermaid-js
           json -I -f package.json -e 'this.name="@mermaid-js/mermaid"' # Package name needs to be set to a scoped one because GitHub registry requires this
           json -I -f package.json -e 'this.repository="git://github.com/mermaid-js/mermaid"' # Repo url needs to have a specific format too
-          npm publish
+          npm --tag preview publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Prevent `npm publish` from failing if the docs verification fails.
