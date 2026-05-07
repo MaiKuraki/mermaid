@@ -182,7 +182,7 @@ export function preprocessBoxDrawing(input: string): PreprocessResult {
       outputLines.push(indent + content);
       outLineNo++;
       lineMap.set(outLineNo, origLineNo);
-    } else if (/^[\s─━│┃├┣└┗]+$/.test(normalized)) {
+    } else if (/^[\s─━│┃└┗├┣]+$/.test(normalized)) {
       // Entire line is box-drawing decoration and whitespace — skip
       continue;
     } else if (ALL_BOX_CHARS.test(normalized)) {
