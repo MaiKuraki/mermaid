@@ -703,14 +703,14 @@ You have to call mermaid.initialize.`
     // object so that tests and callers see what the user actually wrote.
     // Normalization to dagre's canonical 'TB' happens in getData() when the dir
     // is consumed by the layout engine.
-    const userDir = result.dir;
+    const rawDir = result.dir;
     // Capture whether the user explicitly wrote a direction keyword BEFORE any
     // inheritDir override, so that explicitDir is true only for user-authored
     // direction statements.
-    const hasExplicitDir = userDir !== undefined;
+    const hasExplicitDir = rawDir !== undefined;
     const flowchartConfig = getConfig().flowchart ?? {};
     const dir =
-      userDir ??
+      rawDir ??
       (flowchartConfig.inheritDir
         ? (this.getDirection() ?? (getConfig() as any).direction ?? undefined)
         : undefined);
