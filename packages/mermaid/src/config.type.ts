@@ -1850,6 +1850,34 @@ export interface WardleyDiagramConfig extends BaseDiagramConfig {
   showGrid?: boolean;
 }
 /**
+ * Configuration for Cynefin framework diagrams.
+ *
+ * This interface was referenced by `MermaidConfig`'s JSON-Schema
+ * via the `definition` "CynefinDiagramConfig".
+ */
+export interface CynefinDiagramConfig extends BaseDiagramConfig {
+  /**
+   * The width of the Cynefin diagram.
+   */
+  width?: number;
+  /**
+   * The height of the Cynefin diagram.
+   */
+  height?: number;
+  /**
+   * Padding around the diagram.
+   */
+  padding?: number;
+  /**
+   * Show decision model and practice type labels.
+   */
+  showDomainDescriptions?: boolean;
+  /**
+   * Waviness amplitude of domain boundaries (0 for straight).
+   */
+  boundaryAmplitude?: number;
+}
+/**
  * Configuration for Railroad (Syntax) Diagrams
  *
  * This interface was referenced by `MermaidConfig`'s JSON-Schema
@@ -1952,92 +1980,6 @@ export interface RailroadDiagramConfig extends BaseDiagramConfig {
    * Radius of start/end markers
    */
   markerRadius?: number;
-}
-/**
- * The object containing configurations specific for Venn diagrams.
- *
- * This interface was referenced by `MermaidConfig`'s JSON-Schema
- * via the `definition` "VennDiagramConfig".
- */
-export interface VennDiagramConfig extends BaseDiagramConfig {
-  /**
-   * The width of the Venn diagram.
-   */
-  width?: number;
-  /**
-   * The height of the Venn diagram.
-   */
-  height?: number;
-  padding?: number;
-  useDebugLayout?: boolean;
-}
-/**
- * The object containing configurations specific for Wardley Maps diagrams.
- *
- * This interface was referenced by `MermaidConfig`'s JSON-Schema
- * via the `definition` "WardleyDiagramConfig".
- */
-export interface WardleyDiagramConfig extends BaseDiagramConfig {
-  /**
-   * The width of the Wardley diagram canvas.
-   */
-  width?: number;
-  /**
-   * The height of the Wardley diagram canvas.
-   */
-  height?: number;
-  /**
-   * The padding around the Wardley diagram.
-   */
-  padding?: number;
-  /**
-   * The radius of component nodes.
-   */
-  nodeRadius?: number;
-  /**
-   * The offset distance for node labels.
-   */
-  nodeLabelOffset?: number;
-  /**
-   * The font size for axis labels.
-   */
-  axisFontSize?: number;
-  /**
-   * The font size for component labels.
-   */
-  labelFontSize?: number;
-  /**
-   * Whether to display a background grid.
-   */
-  showGrid?: boolean;
-}
-/**
- * Configuration for Cynefin framework diagrams.
- *
- * This interface was referenced by `MermaidConfig`'s JSON-Schema
- * via the `definition` "CynefinDiagramConfig".
- */
-export interface CynefinDiagramConfig extends BaseDiagramConfig {
-  /**
-   * The width of the Cynefin diagram.
-   */
-  width?: number;
-  /**
-   * The height of the Cynefin diagram.
-   */
-  height?: number;
-  /**
-   * Padding around the diagram.
-   */
-  padding?: number;
-  /**
-   * Show decision model and practice type labels.
-   */
-  showDomainDescriptions?: boolean;
-  /**
-   * Waviness amplitude of domain boundaries (0 for straight).
-   */
-  boundaryAmplitude?: number;
 }
 /**
  * This interface was referenced by `MermaidConfig`'s JSON-Schema
