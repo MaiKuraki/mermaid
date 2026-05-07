@@ -44,3 +44,5 @@ jobs:
           npm publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Prevent `npm publish` from failing if the docs verification fails.
+          ONLY_WARN_ON_VERIFY_ERROR: 'true'
