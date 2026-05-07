@@ -93,7 +93,8 @@ export function preprocessBoxDrawing(input: string): PreprocessResult {
     if (DECORATION_ONLY.test(line)) {
       continue;
     }
-    contentLineTexts.push(line);
+    // Normalize tabs early so segment-width inference uses consistent column positions
+    contentLineTexts.push(line.replace(/\t/g, '    '));
   }
 
   // If no box-drawing characters found → return unchanged
@@ -150,13 +151,11 @@ export function preprocessBoxDrawing(input: string): PreprocessResult {
       continue;
     }
 
-    // Reject tabs in box-drawing mode
-    if (line.includes('\t')) {
-      throw new Error(`Line ${origLineNo}: Box-drawing format does not support tab characters`);
-    }
+    // Normalize tabs to spaces for consistent column-position math
+    const normalized = line.replace(/\t/g, '    ');
 
     // Find branch character (├, └, ┣, ┗)
-    const branchMatch = BRANCH_CHAR.exec(line);
+    const branchMatch = BRANCH_CHAR.exec(normalized);
 
     if (branchMatch?.index !== undefined) {
       // Has branch char → compute depth from column position
@@ -165,13 +164,13 @@ export function preprocessBoxDrawing(input: string): PreprocessResult {
 
       // Extract content: skip branch char, then dashes, then spaces
       let pos = branchCol + 1;
-      while (pos < line.length && DASH_CHAR.test(line[pos])) {
+      while (pos < normalized.length && DASH_CHAR.test(normalized[pos])) {
         pos++;
       }
-      while (pos < line.length && line[pos] === ' ') {
+      while (pos < normalized.length && normalized[pos] === ' ') {
         pos++;
       }
-      const content = line.slice(pos).trimEnd();
+      const content = normalized.slice(pos).trimEnd();
 
       if (!content) {
         throw new Error(
@@ -183,10 +182,10 @@ export function preprocessBoxDrawing(input: string): PreprocessResult {
       outputLines.push(indent + content);
       outLineNo++;
       lineMap.set(outLineNo, origLineNo);
-    } else if (ALL_BOX_CHARS.test(line)) {
+    } else if (ALL_BOX_CHARS.test(normalized)) {
       // Has box chars but no branch char — decorative, skip
       continue;
-    } else if (/^\s+/.test(line)) {
+    } else if (/^\s+/.test(normalized)) {
       // Leading whitespace without box chars in box mode → likely mixed format
       throw new Error(
         `Line ${origLineNo}: Unexpected indentation without box-drawing characters. ` +

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  isBoxDrawingFormat,
-  preprocessBoxDrawing,
-  remapErrorLines,
+    isBoxDrawingFormat,
+    preprocessBoxDrawing,
+    remapErrorLines,
 } from './boxDrawingPreprocessor.js';
 
 describe('boxDrawingPreprocessor', () => {
@@ -384,12 +384,24 @@ describe('boxDrawingPreprocessor', () => {
         );
       });
 
-      it('should throw on tab characters', () => {
+      it('should normalize tabs to spaces', () => {
         const input = ['treeView-beta', '├──\tfile.txt'].join('\n');
+        const { text } = preprocessBoxDrawing(input);
+        const lines = text.split('\n');
+        expect(lines[1]).toBe('    file.txt');
+      });
 
-        expect(() => preprocessBoxDrawing(input)).toThrow(
-          'Line 2: Box-drawing format does not support tab characters'
+      it('should handle tab-indented box-drawing lines', () => {
+        // Tab expands to 4 spaces, so `\t├──` puts the branch at column 4 → depth 2
+        const input = ['treeView-beta', '├── src/', '\t├── index.ts', '\t└── utils.ts'].join(
+          '\n'
         );
+        const { text } = preprocessBoxDrawing(input);
+        const lines = text.split('\n');
+        expect(lines[1]).toBe('    src/');
+        // depth 2 = 8 spaces of indent
+        expect(lines[2]).toBe('        index.ts');
+        expect(lines[3]).toBe('        utils.ts');
       });
 
       it('should throw on indented line without box chars in box mode', () => {
