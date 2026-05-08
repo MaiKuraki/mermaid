@@ -124,4 +124,44 @@ identifierPart = choice(nonterminal("letter"), terminal("_")) ;
     expect(terminalExitPath).toContain('L 88 62');
     expect(terminalExitPath).toContain('L 98 50');
   });
+
+  it('orients choice corner arcs in the direction of travel', () => {
+    const text = `railroad-diagram
+sign = choice(terminal("+"), terminal("-")) ;
+`;
+
+    void parser.parse(text);
+    void renderer.draw(text, diagramId, '1.0.0', { db } as unknown as Diagram);
+
+    const choicePaths = [
+      ...document.querySelectorAll<SVGPathElement>('.railroad-choice > .railroad-line'),
+    ].map((path) => path.getAttribute('d') ?? '');
+
+    expect(choicePaths[0]).toContain('A 10 10 0 0 0 10 30');
+    expect(choicePaths[0]).toContain('A 10 10 0 0 1 20 18');
+    expect(choicePaths[1]).toContain('A 10 10 0 0 1 58 28');
+    expect(choicePaths[1]).toContain('A 10 10 0 0 0 68 40');
+    expect(choicePaths[2]).toContain('A 10 10 0 0 1 10 50');
+    expect(choicePaths[2]).toContain('A 10 10 0 0 0 20 62');
+    expect(choicePaths[3]).toContain('A 10 10 0 0 0 58 52');
+    expect(choicePaths[3]).toContain('A 10 10 0 0 1 68 40');
+  });
+
+  it('orients repetition loop corners in the direction of travel', () => {
+    const text = `railroad-diagram
+number = oneOrMore(nonterminal("digit")) ;
+`;
+
+    void parser.parse(text);
+    void renderer.draw(text, diagramId, '1.0.0', { db } as unknown as Diagram);
+
+    const repetitionPaths = [
+      ...document.querySelectorAll<SVGPathElement>('.railroad-repetition > .railroad-line'),
+    ].map((path) => path.getAttribute('d') ?? '');
+    const loopPath = repetitionPaths.find((path) => path.includes('L 90 46'));
+
+    expect(loopPath).toBe(
+      'M 80 18 A 10 10 0 0 1 90 28 L 90 46 A 10 10 0 0 1 80 56 L 20 56 A 10 10 0 0 1 10 46 L 10 28 A 10 10 0 0 1 20 18'
+    );
+  });
 });
