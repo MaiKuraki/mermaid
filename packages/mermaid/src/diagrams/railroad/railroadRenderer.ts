@@ -253,7 +253,7 @@ class RailroadRenderer {
       const leftPath = new PathBuilder();
       if (i === 0) {
         // First alternative - straight line from left
-        leftPath.moveTo(0, centerY).lineTo(arcRadius * 2, elemCenterY);
+        leftPath.moveTo(0, centerY).lineTo(elemX, elemCenterY);
       } else {
         // Arc down from center
         leftPath
@@ -268,7 +268,8 @@ class RailroadRenderer {
             centerY + (elemCenterY > centerY ? arcRadius : -arcRadius)
           )
           .lineTo(arcRadius, elemCenterY - (elemCenterY > centerY ? arcRadius : -arcRadius))
-          .arcTo(arcRadius, arcRadius, 0, false, elemCenterY > centerY, arcRadius * 2, elemCenterY);
+          .arcTo(arcRadius, arcRadius, 0, false, elemCenterY > centerY, arcRadius * 2, elemCenterY)
+          .lineTo(elemX, elemCenterY);
       }
 
       group.append('path').attr('class', 'railroad-line').attr('d', leftPath.build());

@@ -82,4 +82,23 @@ sign = choice(terminal("+"), terminal("-")) ;
     expect(ruleName?.getAttribute('y')).toBe('40');
     expect(choiceEntryPath?.getAttribute('d')).toContain('M 0 40');
   });
+
+  it('connects centered choice alternatives from the left edge', () => {
+    const text = `railroad-diagram
+term = choice(nonterminal("number"), sequence(terminal("("), nonterminal("expression"), terminal(")"))) ;
+`;
+
+    void parser.parse(text);
+    void renderer.draw(text, diagramId, '1.0.0', { db } as unknown as Diagram);
+
+    const numberGroup = document.querySelector<SVGGElement>(
+      '.railroad-choice .railroad-nonterminal'
+    );
+    const choiceEntryPath = document.querySelector<SVGPathElement>(
+      '.railroad-choice > .railroad-line'
+    );
+
+    expect(numberGroup?.getAttribute('transform')).toBe('translate(74, 0)');
+    expect(choiceEntryPath?.getAttribute('d')).toContain('L 74 18');
+  });
 });
