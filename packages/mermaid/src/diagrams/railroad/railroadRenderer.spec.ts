@@ -61,4 +61,25 @@ digit = choice(terminal("0"), terminal("1"), terminal("2"), terminal("3")) ;
     expect(svg.getAttribute('width')).toBe('100%');
     expect(svg.getAttribute('style')).toContain(`max-width: ${width}px`);
   });
+
+  it('aligns rule markers with the centerline of tall expressions', () => {
+    const text = `railroad-diagram
+sign = choice(terminal("+"), terminal("-")) ;
+`;
+
+    void parser.parse(text);
+    void renderer.draw(text, diagramId, '1.0.0', { db } as unknown as Diagram);
+
+    const startMarker = document.querySelector<SVGCircleElement>('.railroad-start circle');
+    const endMarker = document.querySelector<SVGCircleElement>('.railroad-end circle');
+    const ruleName = document.querySelector<SVGTextElement>('.railroad-rule-name');
+    const choiceEntryPath = document.querySelector<SVGPathElement>(
+      '.railroad-choice > .railroad-line'
+    );
+
+    expect(startMarker?.getAttribute('cy')).toBe('40');
+    expect(endMarker?.getAttribute('cy')).toBe('40');
+    expect(ruleName?.getAttribute('y')).toBe('40');
+    expect(choiceEntryPath?.getAttribute('d')).toContain('M 0 40');
+  });
 });

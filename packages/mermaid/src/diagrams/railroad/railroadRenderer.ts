@@ -541,37 +541,39 @@ class RailroadRenderer {
       .attr('class', 'railroad-rule')
       .attr('transform', `translate(0, ${y})`);
 
-    // Rule name
+    const ruleName = rule.name + ' =';
+    const nameWidth = this.measureText(ruleName).width + 20;
+    const definitionX = nameWidth + 20;
+
+    // Render definition
+    const defGroup: SVGGroup = group.append('g');
+    const result = this.renderExpression(defGroup, rule.definition);
+    const baselineY = Math.max(20, result.dimensions.up);
+    const definitionY = baselineY - result.dimensions.up;
+    defGroup.attr('transform', `translate(${definitionX}, ${definitionY})`);
+
     const nameGroup = group.append('g').attr('class', 'railroad-rule-name-group');
     nameGroup
       .append('text')
       .attr('class', 'railroad-rule-name')
       .attr('x', 0)
-      .attr('y', 20)
-      .text(rule.name + ' =');
-
-    const nameWidth = this.measureText(rule.name + ' =').width + 20;
+      .attr('y', baselineY)
+      .text(ruleName);
 
     // Start marker
     const startMarker = group.append('g').attr('class', 'railroad-start');
     startMarker
       .append('circle')
       .attr('cx', nameWidth)
-      .attr('cy', 20)
+      .attr('cy', baselineY)
       .attr('r', this.config.markerRadius);
-
-    // Render definition
-    const defGroup: SVGGroup = group
-      .append('g')
-      .attr('transform', `translate(${nameWidth + 20}, 0)`);
-    const result = this.renderExpression(defGroup, rule.definition);
 
     // End marker
     const endMarker = group.append('g').attr('class', 'railroad-end');
     endMarker
       .append('circle')
-      .attr('cx', nameWidth + 20 + result.dimensions.width + 10)
-      .attr('cy', 20)
+      .attr('cx', definitionX + result.dimensions.width + 10)
+      .attr('cy', baselineY)
       .attr('r', this.config.markerRadius);
 
     // Line from start to definition
@@ -581,8 +583,8 @@ class RailroadRenderer {
       .attr(
         'd',
         new PathBuilder()
-          .moveTo(nameWidth + this.config.markerRadius, 20)
-          .lineTo(nameWidth + 20, 20)
+          .moveTo(nameWidth + this.config.markerRadius, baselineY)
+          .lineTo(definitionX, baselineY)
           .build()
       );
 
@@ -593,14 +595,14 @@ class RailroadRenderer {
       .attr(
         'd',
         new PathBuilder()
-          .moveTo(nameWidth + 20 + result.dimensions.width, 20)
-          .lineTo(nameWidth + 20 + result.dimensions.width + 10 - this.config.markerRadius, 20)
+          .moveTo(definitionX + result.dimensions.width, baselineY)
+          .lineTo(definitionX + result.dimensions.width + 10 - this.config.markerRadius, baselineY)
           .build()
       );
 
     return {
-      height: Math.max(40, result.dimensions.height + 20),
-      width: nameWidth + 20 + result.dimensions.width + 10 + this.config.markerRadius,
+      height: Math.max(40, definitionY + result.dimensions.height + this.config.padding * 2),
+      width: definitionX + result.dimensions.width + 10 + this.config.markerRadius,
     };
   }
 
