@@ -70,11 +70,7 @@ function barycenter(values: number[]): number {
   return s / values.length;
 }
 
-export function countCrossingsBetweenAdjacent(
-  upper: NodeId[],
-  lower: NodeId[],
-  edges: Edge[]
-): number {
+function countCrossingsBetweenAdjacent(upper: NodeId[], lower: NodeId[], edges: Edge[]): number {
   // Filter edges between these two layers
   const upperSet = new Set(upper);
   const lowerSet = new Set(lower);

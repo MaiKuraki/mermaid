@@ -14,7 +14,7 @@ import {
  * Children in future layers are ordered by their minimum layer, while children
  * in the current layer are ordered by crossing counts.
  */
-export function createChildOrderer(
+function createChildOrderer(
   children: Map<NodeId, NodeId[]>,
   rankOf: Record<NodeId, number>,
   crossCounts: Map<NodeId, Map<NodeId, number>>,

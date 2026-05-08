@@ -718,7 +718,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
   // Helper to apply port offset to a base center port
   const applyPortOffset = (
     basePort: Point,
-    node: MermaidNode,
     side: 'top' | 'bottom' | 'left' | 'right',
     offset: number
   ): Point => {
@@ -778,11 +777,11 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     const dstOffset = portOffsets.get(`${i}:dst`);
     if (srcOffset !== undefined) {
       const srcSide = sideInfo?.srcSide ?? determineSide(src, { x: dst.x ?? 0, y: dst.y ?? 0 });
-      pSrcPort = applyPortOffset(pSrcPort, src, srcSide, srcOffset);
+      pSrcPort = applyPortOffset(pSrcPort, srcSide, srcOffset);
     }
     if (dstOffset !== undefined) {
       const dstSide = sideInfo?.dstSide ?? determineSide(dst, { x: src.x ?? 0, y: src.y ?? 0 });
-      pDstPort = applyPortOffset(pDstPort, dst, dstSide, dstOffset);
+      pDstPort = applyPortOffset(pDstPort, dstSide, dstOffset);
     }
 
     // Debug: Log computed ports
@@ -2061,8 +2060,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
 
           if (conflict) {
             crossings++;
-            const _e1 = edges[h1.edgeIndex];
-            const _e2 = edges[h2.edgeIndex];
             if (
               !trySwapSegmentsAcrossTracks(
                 h1,
@@ -2112,7 +2109,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
           if (indices.length < 2) {
             return 0;
           } // Only 1 segment, straight line
-          const _handle = allRoutedSegments[indices[indices.length - 1]];
           const prev = allRoutedSegments[indices[indices.length - 2]];
           // Distance between prev segment's axis and handle's pipe
 
@@ -2503,11 +2499,11 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     const dstOff = portOffsets.get(`${i}:dst`);
     if (srcOff !== undefined) {
       const side = sideInfoRebuild?.srcSide ?? determineSide(src, { x: dst.x ?? 0, y: dst.y ?? 0 });
-      pSrcPort = applyPortOffset(pSrcPort, src, side, srcOff);
+      pSrcPort = applyPortOffset(pSrcPort, side, srcOff);
     }
     if (dstOff !== undefined) {
       const side = sideInfoRebuild?.dstSide ?? determineSide(dst, { x: src.x ?? 0, y: src.y ?? 0 });
-      pDstPort = applyPortOffset(pDstPort, dst, side, dstOff);
+      pDstPort = applyPortOffset(pDstPort, side, dstOff);
     }
 
     const lines = indices.map((idx) => {

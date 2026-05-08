@@ -9,7 +9,7 @@ const SWIMLANE_DEBUG = '[SWIMLANE_DEBUG]';
 
 export type SwimlaneDirection = 'TB' | 'LR' | 'BT' | 'RL';
 
-export function getSwimlaneDirection(data4Layout: LayoutData): SwimlaneDirection {
+function getSwimlaneDirection(data4Layout: LayoutData): SwimlaneDirection {
   return ((data4Layout as LayoutData & { direction?: string }).direction ??
     'TB') as SwimlaneDirection;
 }
