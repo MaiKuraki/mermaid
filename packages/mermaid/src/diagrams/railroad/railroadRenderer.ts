@@ -277,24 +277,29 @@ class RailroadRenderer {
       // Right arc from this alternative to center
       const rightPath = new PathBuilder();
       const rightStart = elemX + r.dimensions.width;
+      const rightLaneX = totalWidth - arcRadius * 2;
       if (i === 0) {
         // First alternative - straight line to right
-        rightPath.moveTo(rightStart, elemCenterY).lineTo(totalWidth, centerY);
+        rightPath
+          .moveTo(rightStart, elemCenterY)
+          .lineTo(rightLaneX, elemCenterY)
+          .lineTo(totalWidth, centerY);
       } else {
         // Arc back to center
         rightPath
           .moveTo(rightStart, elemCenterY)
+          .lineTo(rightLaneX, elemCenterY)
           .arcTo(
             arcRadius,
             arcRadius,
             0,
             false,
             elemCenterY > centerY,
-            rightStart + arcRadius,
+            totalWidth - arcRadius,
             elemCenterY + (elemCenterY > centerY ? -arcRadius : arcRadius)
           )
           .lineTo(
-            rightStart + arcRadius,
+            totalWidth - arcRadius,
             centerY - (elemCenterY > centerY ? -arcRadius : arcRadius)
           )
           .arcTo(arcRadius, arcRadius, 0, false, elemCenterY > centerY, totalWidth, centerY);

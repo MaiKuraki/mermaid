@@ -101,4 +101,27 @@ term = choice(nonterminal("number"), sequence(terminal("("), nonterminal("expres
     expect(numberGroup?.getAttribute('transform')).toBe('translate(74, 0)');
     expect(choiceEntryPath?.getAttribute('d')).toContain('L 74 18');
   });
+
+  it('connects centered choice alternatives to the right lane before merging', () => {
+    const text = `railroad-diagram
+identifierPart = choice(nonterminal("letter"), terminal("_")) ;
+`;
+
+    void parser.parse(text);
+    void renderer.draw(text, diagramId, '1.0.0', { db } as unknown as Diagram);
+
+    const terminalGroup = document.querySelector<SVGGElement>(
+      '.railroad-choice .railroad-terminal'
+    );
+    const choicePaths = [
+      ...document.querySelectorAll<SVGPathElement>('.railroad-choice > .railroad-line'),
+    ];
+    const terminalExitPath = choicePaths
+      .map((path) => path.getAttribute('d') ?? '')
+      .find((d) => d.startsWith('M 68 62'));
+
+    expect(terminalGroup?.getAttribute('transform')).toBe('translate(40, 44)');
+    expect(terminalExitPath).toContain('L 88 62');
+    expect(terminalExitPath).toContain('L 98 50');
+  });
 });
