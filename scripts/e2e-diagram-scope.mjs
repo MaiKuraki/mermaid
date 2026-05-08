@@ -54,6 +54,8 @@ const IGNORABLE_PREFIXES = [
   '.github/FUNDING.yml',
   // Doc-related scripts
   'packages/mermaid/scripts/docs',
+  // Demos
+  'demos',
 ];
 
 // Files ending with these suffixes are ignorable UNLESS they live inside a
