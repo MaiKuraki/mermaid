@@ -302,7 +302,7 @@ Graph layout can be changed by setting `nodeAlignment` to:
 - `left`
 - `right`
 
-### Label Style (v\<MERMAID_RELEASE_VERSION>+)
+### Label Style (v11.15.0+)
 
 You can change how node labels are rendered by setting `labelStyle`:
 

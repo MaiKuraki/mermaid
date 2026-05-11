@@ -320,7 +320,7 @@ namespace BaseShapes {
 }
 ```
 
-### Namespace Labels (v<MERMAID_RELEASE_VERSION>+)
+### Namespace Labels (v11.15.0+)
 
 A namespace can be given a display label using square bracket syntax, similar to class labels:
 
