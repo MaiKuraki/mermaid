@@ -920,10 +920,10 @@ export interface PieDiagramConfig extends BaseDiagramConfig {
    */
   innerHole?: number;
   /**
-   * Parameter to toggle legend. Show legend if set to false, put label inside chart if set to true.
+   * Parameter to set legend position. Set to 'none' to write label inside chart. Default to right.
    *
    */
-  disableLegend?: boolean;
+  legendPosition?: string;
 }
 /**
  * This interface was referenced by `MermaidConfig`'s JSON-Schema

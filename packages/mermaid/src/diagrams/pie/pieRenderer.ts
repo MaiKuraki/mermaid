@@ -48,7 +48,9 @@ export const draw: DrawDefinition = (text, id, _version, diagObj) => {
   let [outerStrokeWidth] = parseFontSize(themeVariables.pieOuterStrokeWidth);
   outerStrokeWidth ??= 2;
 
-  const disableLegend: boolean = pieConfig.disableLegend === true;
+  const legendPosition = pieConfig.legendPosition;
+  const noLegend: boolean = legendPosition === 'none';
+
   const textPosition: number = pieConfig.textPosition;
   const innerHole: number = pieConfig.innerHole;
   const radius: number = Math.min(pieWidth, height) / 2 - MARGIN;
@@ -62,7 +64,7 @@ export const draw: DrawDefinition = (text, id, _version, diagObj) => {
     .innerRadius(radius * textPosition)
     .outerRadius(radius * textPosition);
 
-  group
+  const circle = group
     .append('circle')
     .attr('cx', 0)
     .attr('cy', 0)
@@ -100,7 +102,7 @@ export const draw: DrawDefinition = (text, id, _version, diagObj) => {
   ]);
 
   // Build the pie chart: each part of the pie is a path that we build using the arc function.
-  group
+  const chart = group
     .selectAll('mySlices')
     .data(filteredArcs)
     .enter()
@@ -111,17 +113,23 @@ export const draw: DrawDefinition = (text, id, _version, diagObj) => {
     })
     .attr('class', 'pieCircle');
 
-  // Now add the percentage.
+  // Now add the section text.
   // Use the centroid method to get the best coordinates.
-  group
+  const sectionText = group
     .selectAll('mySlices')
     .data(filteredArcs)
     .enter()
     .append('text')
     .text((datum: d3.PieArcDatum<D3Section>): string => {
-      const label: string = datum.data.label;
+      let label: string = datum.data.label;
+      if (db.getShowData()) {
+        label = `${datum.data.label} [${datum.data.value}]`;
+      }
       const percentage: string = ((datum.data.value / sum) * 100).toFixed(0) + '%';
-      return disableLegend ? label + ' (' + percentage + ')' : percentage;
+      if (noLegend) {
+        return `${label} - ${percentage}`;
+      }
+      return percentage;
     })
     .attr('transform', (datum: d3.PieArcDatum<D3Section>): string => {
       // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
@@ -143,23 +151,17 @@ export const draw: DrawDefinition = (text, id, _version, diagObj) => {
     value,
   }));
 
+  let chartAndLegendHeight: number = pieWidth + MARGIN;
   let chartAndLegendWidth: number = pieWidth + MARGIN;
 
-  if (!disableLegend) {
+  if (!noLegend) {
     // Draw legend
     const legend = group
       .selectAll('.legend')
       .data(allSectionData)
       .enter()
       .append('g')
-      .attr('class', 'legend')
-      .attr('transform', (_datum, index: number): string => {
-        const height = LEGEND_RECT_SIZE + LEGEND_SPACING;
-        const offset = (height * allSectionData.length) / 2;
-        const horizontal = 12 * LEGEND_RECT_SIZE;
-        const vertical = index * height - offset;
-        return 'translate(' + horizontal + ',' + vertical + ')';
-      });
+      .attr('class', 'legend');
 
     legend
       .append('rect')
@@ -186,7 +188,69 @@ export const draw: DrawDefinition = (text, id, _version, diagObj) => {
         .map((node) => (node as Element)?.getBoundingClientRect().width ?? 0)
     );
 
-    chartAndLegendWidth += LEGEND_RECT_SIZE + LEGEND_SPACING + longestTextWidth;
+    const legendHeight = LEGEND_RECT_SIZE + LEGEND_SPACING;
+    const totalLegendHeight = allSectionData.length * legendHeight;
+
+    switch (legendPosition) {
+      case 'top':
+        chartAndLegendHeight += totalLegendHeight;
+
+        legend.attr('transform', (_datum, index: number): string => {
+          const offset: number = radius;
+          const horizontal: number = -longestTextWidth / 2;
+          const vertical: number = index * legendHeight - offset;
+          return `translate(${horizontal}, ${vertical})`;
+        });
+        circle.attr('transform', (): string => {
+          return `translate(0, ${totalLegendHeight + legendHeight})`;
+        });
+        chart.attr('transform', (): string => {
+          return `translate(0, ${totalLegendHeight + legendHeight})`;
+        });
+        sectionText.attr('transform', (datum: d3.PieArcDatum<D3Section>): string => {
+          return `translate(${labelArcGenerator.centroid(datum)[0]}, ${labelArcGenerator.centroid(datum)[1] + totalLegendHeight + legendHeight})`;
+        });
+        break;
+      case 'bottom':
+        chartAndLegendHeight += totalLegendHeight;
+
+        legend.attr('transform', (_datum, index: number): string => {
+          const offset: number = -radius - legendHeight;
+          const horizontal: number = -longestTextWidth / 2;
+          const vertical: number = index * legendHeight - offset;
+          return 'translate(' + horizontal + ',' + vertical + ')';
+        });
+        break;
+      case 'left':
+        chartAndLegendWidth += LEGEND_RECT_SIZE + LEGEND_SPACING + longestTextWidth;
+
+        legend.attr('transform', (_datum, index: number): string => {
+          const offset: number = (legendHeight * allSectionData.length) / 2;
+          const horizontal: number = -radius - legendHeight;
+          const vertical: number = index * legendHeight - offset;
+          return 'translate(' + horizontal + ',' + vertical + ')';
+        });
+        circle.attr('transform', (): string => {
+          return `translate(${longestTextWidth + legendHeight}, 0)`;
+        });
+        chart.attr('transform', (): string => {
+          return `translate(${longestTextWidth + legendHeight}, 0)`;
+        });
+        sectionText.attr('transform', (datum: d3.PieArcDatum<D3Section>): string => {
+          return `translate(${labelArcGenerator.centroid(datum)[0] + longestTextWidth}, ${labelArcGenerator.centroid(datum)[1]})`;
+        });
+        break;
+      default:
+        chartAndLegendWidth += LEGEND_RECT_SIZE + LEGEND_SPACING + longestTextWidth;
+
+        legend.attr('transform', (_datum, index: number): string => {
+          const offset: number = (legendHeight * allSectionData.length) / 2;
+          const horizontal: number = radius + legendHeight;
+          const vertical: number = index * legendHeight - offset;
+          return 'translate(' + horizontal + ',' + vertical + ')';
+        });
+        break;
+    }
   }
 
   // Measure title width to ensure it's not clipped
@@ -199,9 +263,10 @@ export const draw: DrawDefinition = (text, id, _version, diagObj) => {
   const viewBoxX = Math.min(0, titleLeft);
   const viewBoxRight = Math.max(chartAndLegendWidth, titleRight);
   const totalWidth = viewBoxRight - viewBoxX;
+  const totalHeight = Math.max(chartAndLegendHeight, height);
 
-  svg.attr('viewBox', `${viewBoxX} 0 ${totalWidth} ${height}`);
-  configureSvgSize(svg, height, totalWidth, pieConfig.useMaxWidth);
+  svg.attr('viewBox', `${viewBoxX} 0 ${totalWidth} ${totalHeight}`);
+  configureSvgSize(svg, totalHeight, totalWidth, pieConfig.useMaxWidth);
 };
 
 export const renderer = { draw };

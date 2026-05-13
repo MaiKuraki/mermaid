@@ -1112,11 +1112,11 @@ $defs: # JSON Schema definition (maybe we should move these to a separate file)
         description: |
           Donut hole ratio, from 0 for no hole to 1 for only outline.
         default: 0
-      disableLegend:
-        type: boolean
+      legendPosition:
+        type: string
         description: |
-          Parameter to toggle legend. Show legend if set to false, put label inside chart if set to true.
-        default: false
+          Parameter to set legend position. Set to 'none' to write label inside chart. Default to right.
+        default: 'right'
 
   QuadrantChartConfig:
     title: Quadrant Chart Config
