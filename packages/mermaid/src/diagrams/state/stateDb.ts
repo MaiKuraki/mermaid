@@ -650,7 +650,7 @@ export class StateDB {
 
     const svg = select(element).select('svg');
 
-    const nodes = svg.selectAll('g.node');
+    const nodes = svg.selectAll('g.node, g.rough-node');
     nodes
       .on('mouseover', (e: MouseEvent) => {
         const el = select(e.currentTarget as Element);

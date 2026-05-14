@@ -1,5 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
+const renderState = vi.hoisted(() => ({
+  nodeClass: 'node',
+}));
+
 vi.mock('../../diagram-api/diagramAPI.js', () => ({
   getConfig: vi.fn(() => ({
     securityLevel: 'loose',
@@ -17,7 +21,7 @@ vi.mock('../../diagram-api/diagramAPI.js', () => ({
 vi.mock('../../rendering-util/render.js', () => ({
   render: vi.fn((_data, svg) => {
     const node = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    node.setAttribute('class', 'node');
+    node.setAttribute('class', renderState.nodeClass);
 
     const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     label.textContent = 'Google';
@@ -41,32 +45,37 @@ describe('stateRenderer v3 clickable links', () => {
     document.body.innerHTML = `<svg id="${DIAGRAM_ID}"></svg>`;
   });
 
-  it('uses mermaidTooltip for state click tooltips', async () => {
-    const stateDb = new StateDB(1);
-    stateDb.addLink('Google', '"https://google.com"', '"Visit Google"');
+  it.each(['node', 'rough-node'])(
+    'uses mermaidTooltip for state click tooltips on %s elements',
+    async (nodeClass) => {
+      renderState.nodeClass = nodeClass;
 
-    await draw('', DIAGRAM_ID, '1.0.0', {
-      type: 'stateDiagram',
-      db: stateDb,
-    });
+      const stateDb = new StateDB(1);
+      stateDb.addLink('Google', '"https://google.com"', '"Visit Google"');
 
-    const node = document.querySelector(`svg#${DIAGRAM_ID} a > g.node`);
+      await draw('', DIAGRAM_ID, '1.0.0', {
+        type: 'stateDiagram',
+        db: stateDb,
+      });
 
-    expect(node).not.toBeNull();
-    expect(node.getAttribute('title')).toBe('Visit Google');
+      const node = document.querySelector(`svg#${DIAGRAM_ID} a > g.${nodeClass}`);
 
-    stateDb.bindFunctions(document.body);
+      expect(node).not.toBeNull();
+      expect(node.getAttribute('title')).toBe('Visit Google');
 
-    const tooltip = document.querySelector('.mermaidTooltip');
-    expect(tooltip).not.toBeNull();
+      stateDb.bindFunctions(document.body);
 
-    node.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }));
+      const tooltip = document.querySelector('.mermaidTooltip');
+      expect(tooltip).not.toBeNull();
 
-    expect(tooltip.innerHTML).toBe('Visit Google');
-    expect(node.classList.contains('hover')).toBe(true);
+      node.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }));
 
-    node.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true }));
+      expect(tooltip.innerHTML).toBe('Visit Google');
+      expect(node.classList.contains('hover')).toBe(true);
 
-    expect(node.classList.contains('hover')).toBe(false);
-  });
+      node.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true }));
+
+      expect(node.classList.contains('hover')).toBe(false);
+    }
+  );
 });
