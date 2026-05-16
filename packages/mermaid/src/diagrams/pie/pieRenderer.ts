@@ -52,7 +52,7 @@ export const draw: DrawDefinition = (text, id, _version, diagObj) => {
   const noLegend: boolean = legendPosition === 'none';
 
   const textPosition: number = pieConfig.textPosition;
-  const innerHole: number = pieConfig.innerHole;
+  const innerHole: number = pieConfig.donutHole;
   const radius: number = Math.min(pieWidth, height) / 2 - MARGIN;
   // Shape helper to build arcs:
   const arcGenerator: d3.Arc<unknown, d3.PieArcDatum<D3Section>> = arc<d3.PieArcDatum<D3Section>>()
@@ -113,10 +113,15 @@ export const draw: DrawDefinition = (text, id, _version, diagObj) => {
     .attr('fill', (datum: d3.PieArcDatum<D3Section>) => {
       return color(datum.data.label);
     })
-    .attr(
-      'class',
-      `pieCircle ${themeVariables.pieHighlightOnHover === true ? 'pieCircleHighlighted' : ''}`
-    );
+    .attr('class', (datum: d3.PieArcDatum<D3Section>) => {
+      let className = 'pieCircle';
+      if (pieConfig.highlightSlice === 'hover') {
+        className += ' pieCircleHighlightedOnHover';
+      } else if (pieConfig.highlightSlice === datum.data.label) {
+        className += ' pieCircleHighlighted';
+      }
+      return className;
+    });
 
   // Now add the section text.
   // Use the centroid method to get the best coordinates.

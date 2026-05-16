@@ -115,4 +115,62 @@ describe('pie chart', () => {
       `
     );
   });
+
+  it('should render a donut diagram', () => {
+    imgSnapshotTest(
+      `pie title What Koalas Do In A Day
+        "Sleep": 20
+        "Eat": 3
+        "Roam": 1
+      `,
+      { pie: { donutHole: 0.4 } }
+    );
+  });
+
+  it('should render a pie diagram with no legend', () => {
+    imgSnapshotTest(
+      `pie title Portfolio Holdings
+        "Stock": 60
+        "Bond": 30
+        "Cash": 10
+      `,
+      { pie: { legendPosition: 'none' } }
+    );
+  });
+
+  it('should render a pie diagram with legend at the bottom of the diagram', () => {
+    imgSnapshotTest(
+      `pie title Football Team Member Position
+        "Goalkeeper": 2
+        "Back": 8
+        "Midfielder": 5
+        "Striker": 3
+      `,
+      { pie: { legendPosition: 'bottom' } }
+    );
+  });
+
+  it('should render a pie diagram that highlights specific slice', () => {
+    renderGraph(
+      `pie title Budget Allocation
+        "Food": 300
+        "Entertainment": 80
+        "Rent": 500
+      `,
+      { pie: { highlightSlice: 'Rent' } }
+    );
+    cy.get('.pieCircle').first().should('have.class', 'pieCircleHighlighted');
+  });
+
+  it('should render a pie diagram that highlights hovered slice', () => {
+    renderGraph(
+      `pie title Budget Allocation
+        "Food": 300
+        "Entertainment": 80
+        "Rent": 500
+      `,
+      { pie: { highlightSlice: 'hover' } }
+    );
+    cy.get('.pieCircle').first().should('have.class', 'pieCircleHighlightedOnHover');
+  });
 });

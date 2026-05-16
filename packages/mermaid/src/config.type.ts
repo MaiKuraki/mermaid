@@ -918,12 +918,17 @@ export interface PieDiagramConfig extends BaseDiagramConfig {
    * Donut hole ratio, from 0 for no hole to 1 for only outline.
    *
    */
-  innerHole?: number;
+  donutHole?: number;
   /**
-   * Parameter to set legend position. Set to 'none' to write label inside chart. Default to right.
+   * Legend's position relative to the chart. Set to 'none' to write label on slice. Default to right.
    *
    */
   legendPosition?: string;
+  /**
+   * Highlight specific slice with matching label. Set to 'hover' to highlight hovered slice.
+   *
+   */
+  highlightSlice?: string;
 }
 /**
  * This interface was referenced by `MermaidConfig`'s JSON-Schema
