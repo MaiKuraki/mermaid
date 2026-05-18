@@ -30,7 +30,14 @@ describe('State diagram', () => {
       { securityLevel: 'loose', screenshot: false }
     );
 
-    cy.get('a[xlink\\:href] > g.node[title="Visit Google"]').should('exist');
+    cy.get('svg a').should(($links) => {
+      const clickableLink = $links
+        .toArray()
+        .find((link) => link.getAttribute('xlink:href') === 'https://google.com');
+
+      expect(clickableLink, 'clickable state link').to.not.equal(undefined);
+      expect(clickableLink?.querySelector('g.node[title="Visit Google"]')).to.not.equal(null);
+    });
   });
   it('v2 should render a long descriptions instead of id when available', () => {
     imgSnapshotTest(
