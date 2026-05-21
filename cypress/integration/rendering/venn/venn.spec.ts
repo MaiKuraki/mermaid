@@ -220,7 +220,19 @@ describe('Venn Diagram', () => {
     );
   });
 
-  it('16: should render a handDrawn venn with custom styles and text nodes', () => {
+  it('16: should render a venn diagram with a 3-set union without explicit pairwise subsets', () => {
+    imgSnapshotTest(
+      `venn-beta
+        title Innovation
+        set Desirable
+        set Feasible
+        set Viable
+        union Desirable,Feasible,Viable["Innovation"]
+      `
+    );
+  });
+
+  it('17: should render a handDrawn venn with custom styles and text nodes', () => {
     imgSnapshotTest(
       `venn-beta
         set A
