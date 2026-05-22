@@ -1239,6 +1239,7 @@ $defs: # JSON Schema definition (maybe we should move these to a separate file)
         type: number
         minimum: 0
         default: 2
+
   XYChartAxisConfig:
     title: XYChart axis config
     description: This object contains configuration for XYChart axis config
@@ -1256,6 +1257,7 @@ $defs: # JSON Schema definition (maybe we should move these to a separate file)
       - tickWidth
       - showAxisLine
       - axisLineWidth
+      - labelRotation
     properties:
       showLabel:
         description: Should show the axis labels (tick text)
@@ -1308,6 +1310,12 @@ $defs: # JSON Schema definition (maybe we should move these to a separate file)
         type: number
         default: 2
         minimum: 1
+      labelRotation:
+        description: Label rotation in degrees
+        type: number
+        default: 0
+        minimum: -90
+        maximum: 90
 
   XYChartConfig:
     title: XYChart Config
