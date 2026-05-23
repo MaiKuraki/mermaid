@@ -136,6 +136,7 @@ xychart
 | tickWidth     | How width the tick will be           |       2       |
 | showAxisLine  | Axis line to be shown or not         |     true      |
 | axisLineWidth | Thickness of the axis line           |       2       |
+| rotateLabel   | Label rotation in degrees            |       0       |
 
 ## Chart Theme Variables
 

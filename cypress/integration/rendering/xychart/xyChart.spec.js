@@ -879,4 +879,80 @@ describe('XY Chart', () => {
       });
     });
   });
+
+  it('should render xy-chart with rotated label on x-axis', () => {
+    imgSnapshotTest(
+      `
+    ---
+    config:
+      xyChart:
+        xAxis:
+          showLabel: true
+          labelRotation: 45
+    ---
+    xychart
+      title "Git Commits per Month"
+      x-axis "Date" [ 2023-04, 2023-05, 2023-06, 2023-07, 2023-08, 2023-09, 2023-10, 2023-11, 2023-12, 2024-01, 2024-02, 2024-03, 2024-04, 2024-05, 2024-06, 2024-07, 2024-08, 2024-09, 2024-10 ]
+      y-axis "Number of Commits"
+      bar    [ 344, 523, 81, 7, 3, 3, 5, 17, 5, 2, 7, 6, 4, 2, 9, 31, 79, 70, 50 ]
+      %%line [ 344, 523, 81, 7, 3, 3, 5, 17, 5, 2, 7, 6, 4, 2, 9, 31, 79, 70, 50 ]
+    `,
+      {}
+    );
+
+    cy.get('g.bottom-axis > g.label > text').each(($text) => {
+      const transform = $text.attr('transform');
+      expect(transform).to.contains('rotate(45)');
+    });
+  });
+
+  it('should render xy-chart with normal rotation on x-axis when labelRotation value is greater than limit', () => {
+    imgSnapshotTest(
+      `
+    ---
+    config:
+      xyChart:
+        xAxis:
+          showLabel: true
+          labelRotation: 120
+    ---
+    xychart
+      title "Items Sold"
+      x-axis "Item" [ Monitor, Mouse, Keyboard ]
+      y-axis "Number of Sales"
+      bar    [ 51, 72, 36 ]
+    `,
+      {}
+    );
+
+    cy.get('g.bottom-axis > g.label > text').each(($text) => {
+      const transform = $text.attr('transform');
+      expect(transform).to.contains('rotate(0)');
+    });
+  });
+
+  it('should render xy-chart with normal rotation on x-axis when labelRotation value is less than limit', () => {
+    imgSnapshotTest(
+      `
+    ---
+    config:
+      xyChart:
+        xAxis:
+          showLabel: true
+          labelRotation: -100
+    ---
+    xychart
+      title "Items Sold"
+      x-axis "Item" [ Monitor, Mouse, Keyboard ]
+      y-axis "Number of Sales"
+      bar    [ 51, 72, 36 ]
+    `,
+      {}
+    );
+
+    cy.get('g.bottom-axis > g.label > text').each(($text) => {
+      const transform = $text.attr('transform');
+      expect(transform).to.contains('rotate(0)');
+    });
+  });
 });

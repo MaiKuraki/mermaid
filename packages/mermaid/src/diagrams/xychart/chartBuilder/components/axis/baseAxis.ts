@@ -99,7 +99,7 @@ export abstract class BaseAxis implements Axis {
       this.outerPadding = Math.min(spaceRequired.width / 2, maxPadding);
 
       let heightRequired = spaceRequired.height;
-      if (this.axisConfig.labelRotation !== 0) {
+      if (this.axisPosition === 'bottom' && this.axisConfig.labelRotation !== 0) {
         heightRequired = Math.max(
           heightRequired,
           Math.abs(Math.sin((this.axisConfig.labelRotation * Math.PI) / 180) * spaceRequired.width)
