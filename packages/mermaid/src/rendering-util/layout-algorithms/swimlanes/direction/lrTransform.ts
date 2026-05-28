@@ -125,8 +125,7 @@ function mirrorAxis(layout: LayoutData, axis: Axis): boolean {
 
 export function applyBtDirectionTransform(layout: LayoutData): boolean {
   const nodes = (layout.nodes ?? []) as LayoutNode[];
-  const contentNodes = nodes.filter((node) => !node.isGroup);
-  if (contentNodes.length === 0) {
+  if (!nodes.some((node) => !node.isGroup)) {
     return true;
   }
 
