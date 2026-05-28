@@ -5,6 +5,8 @@ import {
   overlapLength,
   orthogonalSegmentsForPoints,
   orthogonalSegmentsStrictlyCross,
+  sameX,
+  sameY,
   segmentBoundsOverlapRect,
 } from './geometry.js';
 import type { OrthogonalSegment, Point } from './geometry.js';
@@ -28,10 +30,10 @@ export function nudgeSharedInteriorSubpaths(edges: Edge[], nodeByIdMap: Map<stri
   );
 
   const sameAxisOverlap = (a: SegmentLite, b: SegmentLite): number => {
-    if (a.horizontal && b.horizontal && Math.abs(a.a.y - b.a.y) < EPS_LOCAL) {
+    if (a.horizontal && b.horizontal && sameY(a.a, b.a, EPS_LOCAL)) {
       return overlapLength(a.a.x, a.b.x, b.a.x, b.b.x);
     }
-    if (a.vertical && b.vertical && Math.abs(a.a.x - b.a.x) < EPS_LOCAL) {
+    if (a.vertical && b.vertical && sameX(a.a, b.a, EPS_LOCAL)) {
       return overlapLength(a.a.y, a.b.y, b.a.y, b.b.y);
     }
     return 0;
