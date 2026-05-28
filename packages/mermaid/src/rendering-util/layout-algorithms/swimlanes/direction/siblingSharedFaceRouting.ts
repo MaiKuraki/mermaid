@@ -1,7 +1,38 @@
 // cspell:ignore Hegemann Kandinsky Siebenhaller
-import { log } from '../../../../logger.js';
+import type { Edge, Node } from '../../../types.js';
 
-const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
+const EPS = 1e-6;
+const MIN_PORT_SPACING = 8;
+const PORT_SHIFT = MIN_PORT_SPACING / 2;
+const LABEL_CLEARANCE_BUFFER = 3;
+
+interface PointLite {
+  x: number;
+  y: number;
+}
+
+interface RectLite {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+interface NodeInfo {
+  id: string;
+  cx: number;
+  cy: number;
+  rect: RectLite;
+}
+
+interface LabelDim {
+  w: number;
+  h: number;
+}
+
+function pairKey(a: string, b: string): string {
+  return a < b ? `${a}::${b}` : `${b}::${a}`;
+}
 
 /**
  * Iter 12 — co-route sibling straight-line rescue.
@@ -20,49 +51,31 @@ const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
  * Mermaid-specific narrowing: we only rescue the exact 4-point shape to
  * minimize blast radius.
  */
-export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): void {
-  const EPS = 1e-6;
-  const MIN_PORT_SPACING = 8;
-  const PORT_SHIFT = MIN_PORT_SPACING / 2;
-
-  interface RectLite {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  }
-  interface NodeInfo {
-    id: string;
-    cx: number;
-    cy: number;
-    rect: RectLite;
-  }
-
+export function straightenCollinearSiblingDetours(edges: Edge[], nodes: Node[]): void {
   const nodeInfoById = new Map<string, NodeInfo>();
   const realNodeRects: { id: string; rect: RectLite }[] = [];
   // Side table of label-node dimensions so we can grow the rescue delta
   // far enough to clear a label sitting on the sibling line.
-  const labelDimById = new Map<string, { w: number; h: number }>();
+  const labelDimById = new Map<string, LabelDim>();
   for (const n of nodes) {
-    if ((n as { isGroup?: boolean }).isGroup) {
+    const id = n.id;
+    if (n.isGroup) {
       continue;
     }
-    if ((n as { isEdgeLabel?: boolean }).isEdgeLabel) {
-      const id = String((n as { id?: string }).id ?? '');
+    if (n.isEdgeLabel) {
       labelDimById.set(id, {
-        w: (n as { width?: number }).width ?? 0,
-        h: (n as { height?: number }).height ?? 0,
+        w: n.width ?? 0,
+        h: n.height ?? 0,
       });
       continue;
     }
-    const cx = (n as { x?: number }).x ?? 0;
-    const cy = (n as { y?: number }).y ?? 0;
-    const w = (n as { width?: number }).width ?? 0;
-    const h = (n as { height?: number }).height ?? 0;
+    const cx = n.x ?? 0;
+    const cy = n.y ?? 0;
+    const w = n.width ?? 0;
+    const h = n.height ?? 0;
     if (w <= 0 || h <= 0) {
       continue;
     }
-    const id = String((n as { id?: string }).id ?? '');
     const rect: RectLite = {
       left: cx - w / 2,
       right: cx + w / 2,
@@ -73,19 +86,12 @@ export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): v
     realNodeRects.push({ id, rect });
   }
 
-  // Mirrors LABEL_PLACEMENT_BUFFER in labelAnchoring.ts — keeps the rescued
-  // straight outside the buffered label rect anchorLabelsToPolyline tests
-  // against.
-  const LABEL_CLEARANCE_BUFFER = 3;
-
-  const pairKey = (a: string, b: string): string => (a < b ? `${a}::${b}` : `${b}::${a}`);
-
   // For a given (this-edge, axis) pair, find the largest label half-extent
   // among any edge sharing the same node pair (anti-parallel siblings) plus
   // this edge's own label. Used to grow the rescue shift past the label so
   // anchorLabelsToPolyline can place the label clear of the sibling.
   const labelClearanceFor = (
-    thisEdge: any,
+    thisEdge: Edge,
     thisSrcId: string,
     thisDstId: string,
     axis: 'x' | 'y'
@@ -105,32 +111,28 @@ export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): v
         maxHalf = half;
       }
     };
-    consider((thisEdge as { labelNodeId?: string }).labelNodeId);
+    consider(thisEdge.labelNodeId);
     for (const other of edges) {
       if (other === thisEdge) {
         continue;
       }
-      if ((other as { isLayoutOnly?: boolean }).isLayoutOnly) {
+      if (other.isLayoutOnly) {
         continue;
       }
-      const oSrc = (other as { start?: string }).start;
-      const oDst = (other as { end?: string }).end;
+      const oSrc = other.start;
+      const oDst = other.end;
       if (!oSrc || !oDst) {
         continue;
       }
       if (pairKey(oSrc, oDst) !== targetPair) {
         continue;
       }
-      consider((other as { labelNodeId?: string }).labelNodeId);
+      consider(other.labelNodeId);
     }
     return maxHalf > 0 ? maxHalf + LABEL_CLEARANCE_BUFFER : 0;
   };
 
-  const segmentHitsNode = (
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-    excludeIds: string[]
-  ): boolean => {
+  const segmentHitsNode = (a: PointLite, b: PointLite, excludeIds: string[]): boolean => {
     const minX = Math.min(a.x, b.x);
     const maxX = Math.max(a.x, b.x);
     const minY = Math.min(a.y, b.y);
@@ -152,10 +154,10 @@ export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): v
   };
 
   const segmentsCrossOrth = (
-    a1: { x: number; y: number },
-    b1: { x: number; y: number },
-    a2: { x: number; y: number },
-    b2: { x: number; y: number }
+    a1: PointLite,
+    b1: PointLite,
+    a2: PointLite,
+    b2: PointLite
   ): boolean => {
     const s1H = Math.abs(a1.y - b1.y) < EPS;
     const s1V = Math.abs(a1.x - b1.x) < EPS;
@@ -191,10 +193,10 @@ export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): v
   };
 
   for (const edge of edges) {
-    if ((edge as { isLayoutOnly?: boolean }).isLayoutOnly) {
+    if (edge.isLayoutOnly) {
       continue;
     }
-    const pts = (edge as { points?: { x: number; y: number }[] }).points;
+    const pts = edge.points;
     if (!pts || pts.length !== 4) {
       continue;
     }
@@ -211,9 +213,8 @@ export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): v
       continue;
     }
 
-    const srcId = (edge as { start?: string }).start;
-    const dstId = (edge as { end?: string }).end;
-    const edgeId = String((edge as { id?: string }).id ?? '');
+    const srcId = edge.start;
+    const dstId = edge.end;
     if (!srcId || !dstId) {
       continue;
     }
@@ -229,8 +230,8 @@ export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): v
       continue;
     }
 
-    let targetSrc: { x: number; y: number };
-    let targetDst: { x: number; y: number };
+    let targetSrc: PointLite;
+    let targetDst: PointLite;
     if (collinearX) {
       const dstBelow = dstInfo.cy > srcInfo.cy;
       targetSrc = { x: srcInfo.cx, y: dstBelow ? srcInfo.rect.bottom : srcInfo.rect.top };
@@ -298,10 +299,10 @@ export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): v
         if (other === edge) {
           continue;
         }
-        if ((other as { isLayoutOnly?: boolean }).isLayoutOnly) {
+        if (other.isLayoutOnly) {
           continue;
         }
-        const opts = (other as { points?: { x: number; y: number }[] }).points;
+        const opts = other.points;
         if (!opts || opts.length < 2) {
           continue;
         }
@@ -342,11 +343,7 @@ export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): v
         continue;
       }
 
-      (edge as { points?: { x: number; y: number }[] }).points = [shiftedSrc, shiftedDst];
-      log.debug(
-        SWIMLANE_DIR_LOG_PREFIX,
-        `straightenCollinearSiblingDetours: rescued ${edgeId} to 2-point straight at ${collinearX ? 'x' : 'y'}=${collinearX ? shiftedSrc.x : shiftedSrc.y} (delta=${delta})`
-      );
+      edge.points = [shiftedSrc, shiftedDst];
       break;
     }
   }
