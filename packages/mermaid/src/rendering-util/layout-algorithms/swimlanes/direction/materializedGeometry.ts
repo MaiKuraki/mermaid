@@ -540,8 +540,7 @@ export function resolveRenderedOrthogonalCrossings(
     right: Math.max(...realNodes.map((node) => node.rect.right)) + ANCHOR,
   };
 
-  const visibleEdges = (): any[] =>
-    edges.filter((edge) => !(edge as { isLayoutOnly?: boolean }).isLayoutOnly);
+  const visibleEdges = edges.filter((edge) => !(edge as { isLayoutOnly?: boolean }).isLayoutOnly);
 
   const pointsFor = (edge: any, replacementEdge?: any, replacement?: PointLite[]): PointLite[] =>
     dedupeConsecutivePoints(
@@ -551,13 +550,12 @@ export function resolveRenderedOrthogonalCrossings(
     );
 
   const crossingCount = (replacementEdge?: any, replacement?: PointLite[]): number => {
-    const candidates = visibleEdges();
     let count = 0;
-    for (let i = 0; i < candidates.length; i++) {
-      const first = candidates[i];
+    for (let i = 0; i < visibleEdges.length; i++) {
+      const first = visibleEdges[i];
       const firstSegments = segmentsFor(pointsFor(first, replacementEdge, replacement));
-      for (let j = i + 1; j < candidates.length; j++) {
-        const second = candidates[j];
+      for (let j = i + 1; j < visibleEdges.length; j++) {
+        const second = visibleEdges[j];
         const secondSegments = segmentsFor(pointsFor(second, replacementEdge, replacement));
         for (const firstSegment of firstSegments) {
           for (const secondSegment of secondSegments) {
@@ -581,7 +579,7 @@ export function resolveRenderedOrthogonalCrossings(
 
   const pathHasSegmentConflict = (edge: any, path: PointLite[]): boolean => {
     const pathSegments = segmentsFor(path);
-    for (const other of visibleEdges()) {
+    for (const other of visibleEdges) {
       if (other === edge) {
         continue;
       }
@@ -703,7 +701,7 @@ export function resolveRenderedOrthogonalCrossings(
     let bestCrossings = currentCrossings;
     let bestBends = Number.POSITIVE_INFINITY;
 
-    for (const edge of visibleEdges()) {
+    for (const edge of visibleEdges) {
       for (const candidate of candidatePathsFor(edge)) {
         if (pathHitsNode(candidate) || pathHasSegmentConflict(edge, candidate)) {
           continue;
