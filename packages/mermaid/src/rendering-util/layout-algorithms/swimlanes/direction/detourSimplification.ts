@@ -1,5 +1,7 @@
 // cspell:ignore Hegemann Wybrow
 
+import { overlapLength } from './geometry.js';
+
 const EPS = 1e-3;
 const MIN_SHARED = 8;
 
@@ -300,12 +302,6 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
       (Math.abs(vX - vert.b.x) < EPS && Math.abs(hY - vert.b.y) < EPS);
     return !(matchesHorizEndpoint && matchesVertEndpoint);
   };
-
-  const overlapLength = (a1: number, a2: number, b1: number, b2: number): number =>
-    Math.max(
-      0,
-      Math.min(Math.max(a1, a2), Math.max(b1, b2)) - Math.max(Math.min(a1, a2), Math.min(b1, b2))
-    );
 
   const pathConflictCount = (
     path: { x: number; y: number }[],

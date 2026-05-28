@@ -1,5 +1,6 @@
 // cspell:ignore Wybrow Hegemann Gladisch reanchor
 import type { Edge, Node } from '../../../types.js';
+import { segmentBoundsOverlapRect } from './geometry.js';
 
 const MIN_CLEARANCE = 20; // Gladisch δ — safety gap
 const EPS = 1e-3;
@@ -30,19 +31,6 @@ function sameY(a: PointLite, b: PointLite): boolean {
   return Math.abs(a.y - b.y) < EPS;
 }
 
-function segmentHitsRect(a: PointLite, b: PointLite, r: RectLite): boolean {
-  const segMinX = Math.min(a.x, b.x);
-  const segMaxX = Math.max(a.x, b.x);
-  const segMinY = Math.min(a.y, b.y);
-  const segMaxY = Math.max(a.y, b.y);
-  return (
-    segMaxX > r.left - BUFFER &&
-    segMinX < r.right + BUFFER &&
-    segMaxY > r.top - BUFFER &&
-    segMinY < r.bottom + BUFFER
-  );
-}
-
 function shiftedSegmentsHitRect(
   before: PointLite,
   newA: PointLite,
@@ -51,9 +39,9 @@ function shiftedSegmentsHitRect(
   r: RectLite
 ): boolean {
   return (
-    segmentHitsRect(newA, newB, r) ||
-    segmentHitsRect(before, newA, r) ||
-    segmentHitsRect(newB, after, r)
+    segmentBoundsOverlapRect(newA, newB, r, BUFFER) ||
+    segmentBoundsOverlapRect(before, newA, r, BUFFER) ||
+    segmentBoundsOverlapRect(newB, after, r, BUFFER)
   );
 }
 

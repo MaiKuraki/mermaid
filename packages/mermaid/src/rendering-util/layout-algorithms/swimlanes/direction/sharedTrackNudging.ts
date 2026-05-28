@@ -1,4 +1,12 @@
 import type { Edge, Node } from '../../../types.js';
+import {
+  dedupeConsecutivePoints,
+  isHorizontalSegment,
+  isVerticalSegment,
+  overlapLength,
+  segmentBoundsOverlapRect,
+} from './geometry.js';
+import type { Point, RectBounds } from './geometry.js';
 
 export function nudgeSharedInteriorSubpaths(edges: Edge[], nodeByIdMap: Map<string, Node>): void {
   const EPS_LOCAL = 1e-3;
@@ -7,17 +15,8 @@ export function nudgeSharedInteriorSubpaths(edges: Edge[], nodeByIdMap: Map<stri
   const BUFFER = 2;
   const MAX_ITERATIONS = 12;
 
-  interface PointLite {
-    x: number;
-    y: number;
-  }
-
-  interface RectLite {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  }
+  type PointLite = Point;
+  type RectLite = RectBounds;
 
   interface SegmentLite {
     edge: Edge;
@@ -56,29 +55,6 @@ export function nudgeSharedInteriorSubpaths(edges: Edge[], nodeByIdMap: Map<stri
     }
   }
 
-  const dedupe = (points: PointLite[]): PointLite[] => {
-    const result: PointLite[] = [];
-    for (const p of points) {
-      const last = result.length > 0 ? result[result.length - 1] : undefined;
-      if (!last || Math.abs(p.x - last.x) > EPS_LOCAL || Math.abs(p.y - last.y) > EPS_LOCAL) {
-        result.push({ x: p.x, y: p.y });
-      }
-    }
-    return result;
-  };
-
-  const isHorizontal = (a: PointLite, b: PointLite): boolean =>
-    Math.abs(a.y - b.y) < EPS_LOCAL && Math.abs(a.x - b.x) > EPS_LOCAL;
-
-  const isVertical = (a: PointLite, b: PointLite): boolean =>
-    Math.abs(a.x - b.x) < EPS_LOCAL && Math.abs(a.y - b.y) > EPS_LOCAL;
-
-  const overlapLength = (a1: number, a2: number, b1: number, b2: number): number =>
-    Math.max(
-      0,
-      Math.min(Math.max(a1, a2), Math.max(b1, b2)) - Math.max(Math.min(a1, a2), Math.min(b1, b2))
-    );
-
   const sameAxisOverlap = (a: SegmentLite, b: SegmentLite): number => {
     if (a.horizontal && b.horizontal && Math.abs(a.a.y - b.a.y) < EPS_LOCAL) {
       return overlapLength(a.a.x, a.b.x, b.a.x, b.b.x);
@@ -89,29 +65,16 @@ export function nudgeSharedInteriorSubpaths(edges: Edge[], nodeByIdMap: Map<stri
     return 0;
   };
 
-  const segmentHitsRect = (a: PointLite, b: PointLite, r: RectLite, buffer: number): boolean => {
-    const segMinX = Math.min(a.x, b.x);
-    const segMaxX = Math.max(a.x, b.x);
-    const segMinY = Math.min(a.y, b.y);
-    const segMaxY = Math.max(a.y, b.y);
-    return (
-      segMaxX > r.left - buffer &&
-      segMinX < r.right + buffer &&
-      segMaxY > r.top - buffer &&
-      segMinY < r.bottom + buffer
-    );
-  };
-
   const segmentsCrossStrict = (
     a1: PointLite,
     a2: PointLite,
     b1: PointLite,
     b2: PointLite
   ): boolean => {
-    const aHoriz = isHorizontal(a1, a2);
-    const aVert = isVertical(a1, a2);
-    const bHoriz = isHorizontal(b1, b2);
-    const bVert = isVertical(b1, b2);
+    const aHoriz = isHorizontalSegment(a1, a2);
+    const aVert = isVerticalSegment(a1, a2);
+    const bHoriz = isHorizontalSegment(b1, b2);
+    const bVert = isVerticalSegment(b1, b2);
     if (!((aHoriz && bVert) || (aVert && bHoriz))) {
       return false;
     }
@@ -136,8 +99,8 @@ export function nudgeSharedInteriorSubpaths(edges: Edge[], nodeByIdMap: Map<stri
     for (let i = 0; i < points.length - 1; i++) {
       const a = points[i];
       const b = points[i + 1];
-      const horizontal = isHorizontal(a, b);
-      const vertical = isVertical(a, b);
+      const horizontal = isHorizontalSegment(a, b);
+      const vertical = isVerticalSegment(a, b);
       if (!horizontal && !vertical) {
         continue;
       }
@@ -164,7 +127,7 @@ export function nudgeSharedInteriorSubpaths(edges: Edge[], nodeByIdMap: Map<stri
       if (!points || points.length < 2) {
         continue;
       }
-      result.push(...segmentsFor(edge, dedupe(points)));
+      result.push(...segmentsFor(edge, dedupeConsecutivePoints(points)));
     }
     return result;
   };
@@ -182,7 +145,7 @@ export function nudgeSharedInteriorSubpaths(edges: Edge[], nodeByIdMap: Map<stri
         if (nodeRect.id === sourceId || nodeRect.id === targetId) {
           continue;
         }
-        if (segmentHitsRect(segment.a, segment.b, nodeRect.rect, BUFFER)) {
+        if (segmentBoundsOverlapRect(segment.a, segment.b, nodeRect.rect, BUFFER)) {
           return false;
         }
       }
@@ -191,7 +154,7 @@ export function nudgeSharedInteriorSubpaths(edges: Edge[], nodeByIdMap: Map<stri
         if (ownLabelId && labelRect.id === ownLabelId) {
           continue;
         }
-        if (segmentHitsRect(segment.a, segment.b, labelRect.rect, BUFFER)) {
+        if (segmentBoundsOverlapRect(segment.a, segment.b, labelRect.rect, BUFFER)) {
           return false;
         }
       }
@@ -206,7 +169,7 @@ export function nudgeSharedInteriorSubpaths(edges: Edge[], nodeByIdMap: Map<stri
         continue;
       }
       for (const candidateSegment of candidateSegments) {
-        for (const otherSegment of segmentsFor(other, dedupe(otherPoints))) {
+        for (const otherSegment of segmentsFor(other, dedupeConsecutivePoints(otherPoints))) {
           if (sameAxisOverlap(candidateSegment, otherSegment) >= MIN_SHARED) {
             return false;
           }
@@ -228,7 +191,7 @@ export function nudgeSharedInteriorSubpaths(edges: Edge[], nodeByIdMap: Map<stri
   };
 
   const shiftedCandidate = (segment: SegmentLite, shift: number): PointLite[] | undefined => {
-    const points = dedupe(segment.edge.points ?? []);
+    const points = dedupeConsecutivePoints(segment.edge.points ?? []);
     if (points.length < 4 || segment.index >= points.length - 1) {
       return undefined;
     }

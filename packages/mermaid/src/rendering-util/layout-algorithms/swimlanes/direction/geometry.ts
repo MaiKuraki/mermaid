@@ -1,8 +1,15 @@
 const EPS = 1e-3;
 
-interface Point {
+export interface Point {
   x: number;
   y: number;
+}
+
+export interface RectBounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
 }
 
 interface SimplifyPassResult {
@@ -10,16 +17,60 @@ interface SimplifyPassResult {
   changed: boolean;
 }
 
-function samePoint(a: Point, b: Point): boolean {
-  return Math.abs(a.x - b.x) < EPS && Math.abs(a.y - b.y) < EPS;
+export function samePoint(a: Point, b: Point, epsilon = EPS): boolean {
+  return Math.abs(a.x - b.x) < epsilon && Math.abs(a.y - b.y) < epsilon;
 }
 
-function sameX(a: Point, b: Point): boolean {
-  return Math.abs(a.x - b.x) < EPS;
+export function sameX(a: Point, b: Point, epsilon = EPS): boolean {
+  return Math.abs(a.x - b.x) < epsilon;
 }
 
-function sameY(a: Point, b: Point): boolean {
-  return Math.abs(a.y - b.y) < EPS;
+export function sameY(a: Point, b: Point, epsilon = EPS): boolean {
+  return Math.abs(a.y - b.y) < epsilon;
+}
+
+export function isHorizontalSegment(a: Point, b: Point, epsilon = EPS): boolean {
+  return sameY(a, b, epsilon) && Math.abs(a.x - b.x) > epsilon;
+}
+
+export function isVerticalSegment(a: Point, b: Point, epsilon = EPS): boolean {
+  return sameX(a, b, epsilon) && Math.abs(a.y - b.y) > epsilon;
+}
+
+export function overlapLength(a1: number, a2: number, b1: number, b2: number): number {
+  return Math.max(
+    0,
+    Math.min(Math.max(a1, a2), Math.max(b1, b2)) - Math.max(Math.min(a1, a2), Math.min(b1, b2))
+  );
+}
+
+export function dedupeConsecutivePoints(points: Point[], epsilon = EPS): Point[] {
+  const result: Point[] = [];
+  for (const point of points) {
+    const last = result.length > 0 ? result[result.length - 1] : undefined;
+    if (!last || !samePoint(last, point, epsilon)) {
+      result.push({ x: point.x, y: point.y });
+    }
+  }
+  return result;
+}
+
+export function segmentBoundsOverlapRect(
+  a: Point,
+  b: Point,
+  rect: RectBounds,
+  buffer = 0
+): boolean {
+  const segMinX = Math.min(a.x, b.x);
+  const segMaxX = Math.max(a.x, b.x);
+  const segMinY = Math.min(a.y, b.y);
+  const segMaxY = Math.max(a.y, b.y);
+  return (
+    segMaxX > rect.left - buffer &&
+    segMinX < rect.right + buffer &&
+    segMaxY > rect.top - buffer &&
+    segMinY < rect.bottom + buffer
+  );
 }
 
 function strictlyBetween(value: number, a: number, b: number): boolean {

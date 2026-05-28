@@ -1,5 +1,6 @@
 // cspell:ignore Hegemann Wybrow penult
 import { log } from '../../../../logger.js';
+import { segmentBoundsOverlapRect } from './geometry.js';
 
 const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
 
@@ -69,24 +70,6 @@ export function collapseShortTerminalStub(edges: any[], nodeByIdMap: Map<string,
       realNodeRects.push({ id, rect });
     }
   }
-
-  const segHitsRect = (
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-    r: RectLite,
-    buffer: number
-  ): boolean => {
-    const segMinX = Math.min(a.x, b.x);
-    const segMaxX = Math.max(a.x, b.x);
-    const segMinY = Math.min(a.y, b.y);
-    const segMaxY = Math.max(a.y, b.y);
-    return (
-      segMaxX > r.left - buffer &&
-      segMinX < r.right + buffer &&
-      segMaxY > r.top - buffer &&
-      segMinY < r.bottom + buffer
-    );
-  };
 
   // Orthogonal segment pair intersection test (T-junctions and crossings).
   // Returns true only when one is horizontal and the other vertical AND they
@@ -215,7 +198,7 @@ export function collapseShortTerminalStub(edges: any[], nodeByIdMap: Map<string,
       if (rn.id === dstId) {
         continue;
       }
-      if (segHitsRect(newPrev, newEnd, rn.rect, BUFFER)) {
+      if (segmentBoundsOverlapRect(newPrev, newEnd, rn.rect, BUFFER)) {
         blocked = true;
         break;
       }
@@ -226,7 +209,7 @@ export function collapseShortTerminalStub(edges: any[], nodeByIdMap: Map<string,
 
     // Reject if the new approach segment would run through any label rect.
     for (const lr of labelRects) {
-      if (segHitsRect(newPrev, newEnd, lr.rect, BUFFER)) {
+      if (segmentBoundsOverlapRect(newPrev, newEnd, lr.rect, BUFFER)) {
         blocked = true;
         break;
       }
@@ -310,7 +293,7 @@ export function collapseShortTerminalStub(edges: any[], nodeByIdMap: Map<string,
         if (rn.id === srcId || rn.id === dstId) {
           continue;
         }
-        if (segHitsRect(beforePrev, newPrev, rn.rect, BUFFER)) {
+        if (segmentBoundsOverlapRect(beforePrev, newPrev, rn.rect, BUFFER)) {
           blocked = true;
           break;
         }

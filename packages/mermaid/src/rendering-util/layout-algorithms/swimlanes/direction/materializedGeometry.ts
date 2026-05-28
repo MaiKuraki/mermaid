@@ -1,19 +1,19 @@
 // cspell:ignore Wybrow
 
+import {
+  dedupeConsecutivePoints,
+  isHorizontalSegment,
+  isVerticalSegment,
+  overlapLength,
+  segmentBoundsOverlapRect,
+} from './geometry.js';
+import type { Point, RectBounds } from './geometry.js';
+
 const EPS_LOCAL = 1e-3;
 const MIN_SHARED = 8;
 
-interface PointLite {
-  x: number;
-  y: number;
-}
-
-interface RectLite {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-}
+type PointLite = Point;
+type RectLite = RectBounds;
 
 interface SegmentLite {
   a: PointLite;
@@ -33,29 +33,6 @@ const rectOfNode = (node: any): RectLite | undefined => {
   return { left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2 };
 };
 
-const dedupePoints = (points: PointLite[]): PointLite[] => {
-  const result: PointLite[] = [];
-  for (const point of points) {
-    const last = result.length > 0 ? result[result.length - 1] : undefined;
-    if (!last || Math.abs(point.x - last.x) > EPS_LOCAL || Math.abs(point.y - last.y) > EPS_LOCAL) {
-      result.push({ x: point.x, y: point.y });
-    }
-  }
-  return result;
-};
-
-const isHorizontal = (a: PointLite, b: PointLite): boolean =>
-  Math.abs(a.y - b.y) < EPS_LOCAL && Math.abs(a.x - b.x) > EPS_LOCAL;
-
-const isVertical = (a: PointLite, b: PointLite): boolean =>
-  Math.abs(a.x - b.x) < EPS_LOCAL && Math.abs(a.y - b.y) > EPS_LOCAL;
-
-const overlapLength = (a1: number, a2: number, b1: number, b2: number): number =>
-  Math.max(
-    0,
-    Math.min(Math.max(a1, a2), Math.max(b1, b2)) - Math.max(Math.min(a1, a2), Math.min(b1, b2))
-  );
-
 const sameAxisOverlap = (a: SegmentLite, b: SegmentLite): number => {
   if (a.horizontal && b.horizontal && Math.abs(a.a.y - b.a.y) < 0.5) {
     return overlapLength(a.a.x, a.b.x, b.a.x, b.b.x);
@@ -64,19 +41,6 @@ const sameAxisOverlap = (a: SegmentLite, b: SegmentLite): number => {
     return overlapLength(a.a.y, a.b.y, b.a.y, b.b.y);
   }
   return 0;
-};
-
-const segmentHitsRect = (segment: SegmentLite, rect: RectLite, buffer: number): boolean => {
-  const minX = Math.min(segment.a.x, segment.b.x);
-  const maxX = Math.max(segment.a.x, segment.b.x);
-  const minY = Math.min(segment.a.y, segment.b.y);
-  const maxY = Math.max(segment.a.y, segment.b.y);
-  return (
-    maxX > rect.left - buffer &&
-    minX < rect.right + buffer &&
-    maxY > rect.top - buffer &&
-    minY < rect.bottom + buffer
-  );
 };
 
 const segmentsCrossStrict = (a: SegmentLite, b: SegmentLite): boolean => {
@@ -104,8 +68,8 @@ const segmentsFor = (points: PointLite[]): SegmentLite[] => {
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i];
     const b = points[i + 1];
-    const horizontal = isHorizontal(a, b);
-    const vertical = isVertical(a, b);
+    const horizontal = isHorizontalSegment(a, b);
+    const vertical = isVerticalSegment(a, b);
     if (horizontal || vertical) {
       result.push({ a, b, horizontal, vertical });
     }
@@ -156,7 +120,7 @@ export function separateSharedRenderedTerminalLanes(
   };
 
   const terminalLaneFor = (edge: any, atStart: boolean): TerminalLane | undefined => {
-    const points = dedupePoints((edge as { points?: PointLite[] }).points ?? []);
+    const points = dedupeConsecutivePoints((edge as { points?: PointLite[] }).points ?? []);
     if (points.length < 2) {
       return undefined;
     }
@@ -269,7 +233,7 @@ export function separateSharedRenderedTerminalLanes(
     exactTerminalLaneConflict(a, b) || nearTerminalLaneConflict(a, b);
 
   const shiftedCandidate = (lane: TerminalLane, shift: number): PointLite[] | undefined => {
-    const points = dedupePoints((lane.edge as { points?: PointLite[] }).points ?? []);
+    const points = dedupeConsecutivePoints((lane.edge as { points?: PointLite[] }).points ?? []);
     if (points.length < 2) {
       return undefined;
     }
@@ -446,12 +410,12 @@ export function collapseRedundantRectangularDoglegs(
         if (nodeRect.id === sourceId || nodeRect.id === targetId) {
           continue;
         }
-        if (segmentHitsRect(segment, nodeRect.rect, BUFFER)) {
+        if (segmentBoundsOverlapRect(segment.a, segment.b, nodeRect.rect, BUFFER)) {
           return false;
         }
       }
       for (const labelRect of labelRects) {
-        if (segmentHitsRect(segment, labelRect.rect, BUFFER)) {
+        if (segmentBoundsOverlapRect(segment.a, segment.b, labelRect.rect, BUFFER)) {
           return false;
         }
       }
@@ -466,7 +430,7 @@ export function collapseRedundantRectangularDoglegs(
         continue;
       }
       for (const candidateSegment of candidateSegments) {
-        for (const otherSegment of segmentsFor(dedupePoints(otherPoints))) {
+        for (const otherSegment of segmentsFor(dedupeConsecutivePoints(otherPoints))) {
           if (sameAxisOverlap(candidateSegment, otherSegment) >= MIN_SHARED) {
             return false;
           }
@@ -491,27 +455,27 @@ export function collapseRedundantRectangularDoglegs(
     const p4 = points[i + 4];
 
     const terminalVerticalDogleg =
-      isHorizontal(p0, p1) &&
-      isVertical(p1, p2) &&
-      isHorizontal(p2, p3) &&
-      isVertical(p3, p4) &&
+      isHorizontalSegment(p0, p1) &&
+      isVerticalSegment(p1, p2) &&
+      isHorizontalSegment(p2, p3) &&
+      isVerticalSegment(p3, p4) &&
       Math.abs(p0.x - p3.x) < EPS_LOCAL &&
       Math.abs(p0.x - p4.x) < EPS_LOCAL &&
       Math.abs(p1.x - p2.x) < EPS_LOCAL &&
       (p1.x - p0.x) * (p3.x - p2.x) < 0;
 
     const terminalHorizontalDogleg =
-      isVertical(p0, p1) &&
-      isHorizontal(p1, p2) &&
-      isVertical(p2, p3) &&
-      isHorizontal(p3, p4) &&
+      isVerticalSegment(p0, p1) &&
+      isHorizontalSegment(p1, p2) &&
+      isVerticalSegment(p2, p3) &&
+      isHorizontalSegment(p3, p4) &&
       Math.abs(p0.y - p3.y) < EPS_LOCAL &&
       Math.abs(p0.y - p4.y) < EPS_LOCAL &&
       Math.abs(p1.y - p2.y) < EPS_LOCAL &&
       (p1.y - p0.y) * (p3.y - p2.y) < 0;
 
     if (terminalVerticalDogleg || terminalHorizontalDogleg) {
-      return dedupePoints([...points.slice(0, i + 1), p4, ...points.slice(i + 5)]);
+      return dedupeConsecutivePoints([...points.slice(0, i + 1), p4, ...points.slice(i + 5)]);
     }
 
     if (i + 5 >= points.length) {
@@ -520,22 +484,22 @@ export function collapseRedundantRectangularDoglegs(
     const p5 = points[i + 5];
 
     const verticalDogleg =
-      isVertical(p0, p1) &&
-      isHorizontal(p1, p2) &&
-      isVertical(p2, p3) &&
-      isHorizontal(p3, p4) &&
-      isVertical(p4, p5) &&
+      isVerticalSegment(p0, p1) &&
+      isHorizontalSegment(p1, p2) &&
+      isVerticalSegment(p2, p3) &&
+      isHorizontalSegment(p3, p4) &&
+      isVerticalSegment(p4, p5) &&
       Math.abs(p0.x - p4.x) < EPS_LOCAL &&
       Math.abs(p0.x - p5.x) < EPS_LOCAL &&
       Math.abs(p2.x - p3.x) < EPS_LOCAL &&
       (p2.x - p1.x) * (p4.x - p3.x) < 0;
 
     const horizontalDogleg =
-      isHorizontal(p0, p1) &&
-      isVertical(p1, p2) &&
-      isHorizontal(p2, p3) &&
-      isVertical(p3, p4) &&
-      isHorizontal(p4, p5) &&
+      isHorizontalSegment(p0, p1) &&
+      isVerticalSegment(p1, p2) &&
+      isHorizontalSegment(p2, p3) &&
+      isVerticalSegment(p3, p4) &&
+      isHorizontalSegment(p4, p5) &&
       Math.abs(p0.y - p4.y) < EPS_LOCAL &&
       Math.abs(p0.y - p5.y) < EPS_LOCAL &&
       Math.abs(p2.y - p3.y) < EPS_LOCAL &&
@@ -545,7 +509,7 @@ export function collapseRedundantRectangularDoglegs(
       return undefined;
     }
 
-    return dedupePoints([...points.slice(0, i + 1), p5, ...points.slice(i + 6)]);
+    return dedupeConsecutivePoints([...points.slice(0, i + 1), p5, ...points.slice(i + 6)]);
   };
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
@@ -554,7 +518,7 @@ export function collapseRedundantRectangularDoglegs(
       if ((edge as { isLayoutOnly?: boolean }).isLayoutOnly) {
         continue;
       }
-      const points = dedupePoints((edge as { points?: PointLite[] }).points ?? []);
+      const points = dedupeConsecutivePoints((edge as { points?: PointLite[] }).points ?? []);
       for (let i = 0; i <= points.length - 5; i++) {
         const candidate = withoutDogleg(points, i);
         if (!candidate || !candidateIsSafe(edge, candidate)) {
@@ -629,7 +593,7 @@ export function resolveRenderedOrthogonalCrossings(
     edges.filter((edge) => !(edge as { isLayoutOnly?: boolean }).isLayoutOnly);
 
   const pointsFor = (edge: any, replacementEdge?: any, replacement?: PointLite[]): PointLite[] =>
-    dedupePoints(
+    dedupeConsecutivePoints(
       edge === replacementEdge
         ? (replacement ?? [])
         : ((edge as { points?: PointLite[] }).points ?? [])
@@ -784,7 +748,7 @@ export function resolveRenderedOrthogonalCrossings(
 
     const seen = new Set<string>();
     return candidates
-      .map((candidate) => dedupePoints(candidate))
+      .map((candidate) => dedupeConsecutivePoints(candidate))
       .filter((candidate) => {
         const key = candidate
           .map((point) => `${point.x.toFixed(3)},${point.y.toFixed(3)}`)

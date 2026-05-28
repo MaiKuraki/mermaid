@@ -1,5 +1,6 @@
 // cspell:ignore Hegemann Wolff raykov
 import type { Edge, Node } from '../../../types.js';
+import { segmentBoundsOverlapRect } from './geometry.js';
 
 const EPS = 1e-3;
 const JOG_MAX = 20; // matches raykov MAX_PORT_SPACING
@@ -88,19 +89,6 @@ export function straightenStalePortOffsets(edges: Edge[], nodeByIdMap: Map<strin
       allSegments.push({ edgeId: other.id, a: opts[i], b: opts[i + 1] });
     }
   }
-
-  const segHitsRect = (a: PointLite, b: PointLite, r: RectLite, buffer: number): boolean => {
-    const segMinX = Math.min(a.x, b.x);
-    const segMaxX = Math.max(a.x, b.x);
-    const segMinY = Math.min(a.y, b.y);
-    const segMaxY = Math.max(a.y, b.y);
-    return (
-      segMaxX > r.left - buffer &&
-      segMinX < r.right + buffer &&
-      segMaxY > r.top - buffer &&
-      segMinY < r.bottom + buffer
-    );
-  };
 
   // Collinear-incident-at-shared-node lookup for neighbor alignment.
   // Given a node and an axis ('y' for horizontal neighbors, 'x' for vertical),
@@ -295,7 +283,7 @@ export function straightenStalePortOffsets(edges: Edge[], nodeByIdMap: Map<strin
       if (nid === startId || nid === endId) {
         continue;
       }
-      if (segHitsRect(newStart, newEnd, rect, NODE_BUFFER)) {
+      if (segmentBoundsOverlapRect(newStart, newEnd, rect, NODE_BUFFER)) {
         overlapsNode = true;
         break;
       }
@@ -307,7 +295,7 @@ export function straightenStalePortOffsets(edges: Edge[], nodeByIdMap: Map<strin
     // Safety check: straightened line must not overlap any anchored label rect.
     let overlapsLabel = false;
     for (const { rect } of labelRects) {
-      if (segHitsRect(newStart, newEnd, rect, LABEL_BUFFER)) {
+      if (segmentBoundsOverlapRect(newStart, newEnd, rect, LABEL_BUFFER)) {
         overlapsLabel = true;
         break;
       }
