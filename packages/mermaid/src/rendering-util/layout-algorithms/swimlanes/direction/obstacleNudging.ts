@@ -3,6 +3,8 @@ import type { Edge, Node } from '../../../types.js';
 import {
   collectNodeRectEntries,
   dedupeConsecutivePoints,
+  isHorizontalSegment,
+  isVerticalSegment,
   orthogonalSegmentsStrictlyCross as segmentsCross,
   sameX,
   sameY,
@@ -171,14 +173,14 @@ export function nudgeInteriorVerticalsFromObstacles(
     for (let i = 1; i <= working.length - 3; i++) {
       const a = working[i];
       const b = working[i + 1];
-      const isVertical = sameX(a, b) && Math.abs(a.y - b.y) > EPS;
+      const isVertical = isVerticalSegment(a, b, EPS);
       if (!isVertical) {
         continue;
       }
       const before = working[i - 1];
       const after = working[i + 2];
-      const beforeHoriz = sameY(before, a) && Math.abs(before.x - a.x) > EPS;
-      const afterHoriz = sameY(after, b) && Math.abs(after.x - b.x) > EPS;
+      const beforeHoriz = isHorizontalSegment(before, a, EPS);
+      const afterHoriz = isHorizontalSegment(after, b, EPS);
       if (!beforeHoriz || !afterHoriz) {
         continue;
       }
