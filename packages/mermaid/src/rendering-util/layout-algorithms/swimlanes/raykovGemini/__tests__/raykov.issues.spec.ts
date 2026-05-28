@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { routeEdgesOrthogonal } from '../raykov.js';
 import type { LayoutData, Edge } from '../../../../types.js';
 
+const DEBUG = process.env.RAYKOV_DEBUG === 'true';
+const debugLog = (...args: unknown[]) => {
+  if (DEBUG) {
+    console.log(...args);
+  }
+};
+
 interface Point {
   x: number;
   y: number;
@@ -201,7 +208,7 @@ describe('Raykov Router Issues', () => {
     }
 
     if (overlapFound) {
-      console.log('Test Failure Detail:', overlapDetails);
+      debugLog('Test Failure Detail:', overlapDetails);
     }
 
     expect(
@@ -239,8 +246,8 @@ describe('Raykov Router Issues', () => {
     const expectedX = Stop.x - Stop.width / 2;
     const expectedY = Stop.y;
 
-    console.log(`Final Point 1: (${lastPoint1.x}, ${lastPoint1.y})`);
-    console.log(`Final Point 2: (${lastPoint2.x}, ${lastPoint2.y})`);
+    debugLog(`Final Point 1: (${lastPoint1.x}, ${lastPoint1.y})`);
+    debugLog(`Final Point 2: (${lastPoint2.x}, ${lastPoint2.y})`);
 
     // Check X coordinate (should be on left boundary)
     expect(Math.abs(lastPoint1.x - expectedX)).toBeLessThan(1);
@@ -323,7 +330,7 @@ describe('Raykov Router Issues', () => {
 
     // We expect minimal backtracking (maybe small adjustments), but not 40px
     if (maxBacktrack > 5) {
-      console.log('Backtracking detected:', JSON.stringify(points));
+      debugLog('Backtracking detected:', JSON.stringify(points));
     }
     expect(maxBacktrack).toBeLessThan(5);
   });
@@ -383,8 +390,8 @@ describe('Raykov Router Issues', () => {
     const last = points[points.length - 1];
     const prev = points[points.length - 2];
 
-    console.log('Issue 4 Points (Start1->Stop):', JSON.stringify(points));
-    console.log(`Last: ${last.x}, Prev: ${prev.x}`);
+    debugLog('Issue 4 Points (Start1->Stop):', JSON.stringify(points));
+    debugLog(`Last: ${last.x}, Prev: ${prev.x}`);
 
     const boundaryX = Stop.x - Stop.width / 2; // 138.95
 
@@ -442,7 +449,7 @@ describe('Raykov Router Issues', () => {
 
     expect(edgeIK.points).toBeDefined();
     const points = edgeIK.points!;
-    console.log('[RAYKOV_ISSUE5] Edge I->K points:', JSON.stringify(points));
+    debugLog('[RAYKOV_ISSUE5] Edge I->K points:', JSON.stringify(points));
 
     // I is at y=50 (center), bottom is y=75
     // K is at y=280 (center), top is y=260
@@ -451,13 +458,13 @@ describe('Raykov Router Issues', () => {
     // Check that the edge exits from the bottom of I (port should be at y >= I.y)
     const firstPoint = points[0];
     expect(firstPoint.y).toBeGreaterThanOrEqual(I.y);
-    console.log('[RAYKOV_ISSUE5] First point Y:', firstPoint.y, 'I center Y:', I.y);
+    debugLog('[RAYKOV_ISSUE5] First point Y:', firstPoint.y, 'I center Y:', I.y);
 
     // Check that the second point is NOT above the first point
     // (i.e., the edge should not go UP)
     if (points.length > 1) {
       const secondPoint = points[1];
-      console.log('[RAYKOV_ISSUE5] Second point Y:', secondPoint.y);
+      debugLog('[RAYKOV_ISSUE5] Second point Y:', secondPoint.y);
 
       // The second point should be at or below the first point's Y
       // (allowing for small anchor offset, but NOT going significantly UP)
@@ -467,7 +474,7 @@ describe('Raykov Router Issues', () => {
     // Check that the edge does not go UP significantly before going down
     // Find the minimum Y in the path
     const minY = Math.min(...points.map((p) => p.y));
-    console.log('[RAYKOV_ISSUE5] Min Y in path:', minY, 'First point Y:', firstPoint.y);
+    debugLog('[RAYKOV_ISSUE5] Min Y in path:', minY, 'First point Y:', firstPoint.y);
 
     // The minimum Y should not be much above the first point
     // (going up by ANCHOR_OFFSET is wrong if destination is below)
@@ -510,7 +517,7 @@ describe('Raykov Router Issues', () => {
 
     expect(edgeIK.points).toBeDefined();
     const points = edgeIK.points!;
-    console.log('[RAYKOV_ISSUE5b] Edge I->K points:', JSON.stringify(points));
+    debugLog('[RAYKOV_ISSUE5b] Edge I->K points:', JSON.stringify(points));
 
     // I center at y=30, bottom at y=55
     // Port at bottom: y = 55
@@ -522,10 +529,10 @@ describe('Raykov Router Issues', () => {
     const firstPoint = points[0];
     const minY = Math.min(...points.map((p) => p.y));
 
-    console.log('[RAYKOV_ISSUE5b] First point Y:', firstPoint.y);
-    console.log('[RAYKOV_ISSUE5b] Min Y in path:', minY);
-    console.log('[RAYKOV_ISSUE5b] I bottom:', I.y + I.height / 2);
-    console.log('[RAYKOV_ISSUE5b] J top:', J.y - J.height / 2);
+    debugLog('[RAYKOV_ISSUE5b] First point Y:', firstPoint.y);
+    debugLog('[RAYKOV_ISSUE5b] Min Y in path:', minY);
+    debugLog('[RAYKOV_ISSUE5b] I bottom:', I.y + I.height / 2);
+    debugLog('[RAYKOV_ISSUE5b] J top:', J.y - J.height / 2);
 
     // The minimum Y should not be above I's center (going UP is wrong)
     // The edge should exit from bottom and go around J, not over it
@@ -552,7 +559,7 @@ describe('Raykov Router Issues', () => {
         // Check if segment crosses J's y-range
         const crossesJ = segMinY < JMaxY && segMaxY > JMinY;
         if (crossesJ) {
-          console.log(
+          debugLog(
             `[RAYKOV_ISSUE5b] FAIL: Segment ${i} (${p1.x},${p1.y})->(${p2.x},${p2.y}) crosses J [${JMinX},${JMinY}]-[${JMaxX},${JMaxY}]`
           );
         }
@@ -598,13 +605,13 @@ describe('Raykov Router Issues', () => {
 
     expect(edgeIK.points).toBeDefined();
     const points = edgeIK.points!;
-    console.log('[RAYKOV_ISSUE6] Edge I->K points:', JSON.stringify(points));
+    debugLog('[RAYKOV_ISSUE6] Edge I->K points:', JSON.stringify(points));
 
     const firstPoint = points[0];
-    console.log('[RAYKOV_ISSUE6] First point:', firstPoint);
-    console.log('[RAYKOV_ISSUE6] I center:', I.x, I.y);
-    console.log('[RAYKOV_ISSUE6] I bottom center should be:', I.x, I.y + I.height / 2);
-    console.log('[RAYKOV_ISSUE6] I right center would be:', I.x + I.width / 2, I.y);
+    debugLog('[RAYKOV_ISSUE6] First point:', firstPoint);
+    debugLog('[RAYKOV_ISSUE6] I center:', I.x, I.y);
+    debugLog('[RAYKOV_ISSUE6] I bottom center should be:', I.x, I.y + I.height / 2);
+    debugLog('[RAYKOV_ISSUE6] I right center would be:', I.x + I.width / 2, I.y);
 
     // The first point (port) should be at the BOTTOM CENTER of I
     // I center: (121.06, 22.5), height: 45
@@ -622,7 +629,7 @@ describe('Raykov Router Issues', () => {
       const next = points[i + 1];
       // Allow small decreases for routing, but not significant upward movement
       if (next.y < current.y - 5) {
-        console.log(
+        debugLog(
           `[RAYKOV_ISSUE6] WARNING: Path goes UP at segment ${i}: (${current.x},${current.y}) -> (${next.x},${next.y})`
         );
       }
@@ -665,13 +672,13 @@ describe('Raykov Router Issues', () => {
 
     expect(edgeIK.points).toBeDefined();
     const points = edgeIK.points!;
-    console.log('[RAYKOV_ISSUE6] Edge I->K points:', JSON.stringify(points));
+    debugLog('[RAYKOV_ISSUE6] Edge I->K points:', JSON.stringify(points));
 
     // The edge should start from I's BOTTOM center, not a corner
     // I center x = 121.06, so port should be at x ≈ 121
     const firstPoint = points[0];
-    console.log('[RAYKOV_ISSUE6] First point:', firstPoint);
-    console.log('[RAYKOV_ISSUE6] I center x:', I.x, 'I right edge:', I.x + I.width / 2);
+    debugLog('[RAYKOV_ISSUE6] First point:', firstPoint);
+    debugLog('[RAYKOV_ISSUE6] I center x:', I.x, 'I right edge:', I.x + I.width / 2);
 
     // Check that the first point is at the BOTTOM CENTER of I, not the right edge
     // Allow small tolerance for port placement
@@ -680,7 +687,7 @@ describe('Raykov Router Issues', () => {
     // Check that the edge does not go UP (second point y should be >= first point y)
     if (points.length > 1) {
       const secondPoint = points[1];
-      console.log('[RAYKOV_ISSUE6] Second point:', secondPoint);
+      debugLog('[RAYKOV_ISSUE6] Second point:', secondPoint);
       expect(secondPoint.y).toBeGreaterThanOrEqual(firstPoint.y - 5);
     }
   });
@@ -739,8 +746,8 @@ describe('Raykov Router Issues', () => {
     const last = points[points.length - 1];
     const prev = points[points.length - 2];
 
-    console.log('Issue 4b Points:', JSON.stringify(points));
-    console.log(`Last: ${last.x}, Prev: ${prev.x}`);
+    debugLog('Issue 4b Points:', JSON.stringify(points));
+    debugLog(`Last: ${last.x}, Prev: ${prev.x}`);
 
     // With orthogonal routing, the port should be at the center of the left side:
     // Stop center: (169.3515625, 22.5), width: 60.8046875

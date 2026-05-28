@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { routeEdgesOrthogonal } from '../raykov.js';
 import type { LayoutData } from '../../../../types.js';
 
+const DEBUG = process.env.RAYKOV_DEBUG === 'true';
+const debugLog = (...args: unknown[]) => {
+  if (DEBUG) {
+    console.log(...args);
+  }
+};
+
 interface Point {
   x: number;
   y: number;
@@ -216,9 +223,9 @@ describe('Raykov orthogonal router - wide node routing', () => {
 
     runLayout([I, J, K], [eIJ, eIK]);
 
-    console.log(LOG_PREFIX, 'I->J points:', JSON.stringify(eIJ.points, null, 2));
-    console.log(LOG_PREFIX, 'I->K points:', JSON.stringify(eIK.points, null, 2));
-    console.log(LOG_PREFIX, 'J node bounds:', {
+    debugLog(LOG_PREFIX, 'I->J points:', JSON.stringify(eIJ.points, null, 2));
+    debugLog(LOG_PREFIX, 'I->K points:', JSON.stringify(eIK.points, null, 2));
+    debugLog(LOG_PREFIX, 'J node bounds:', {
       x: J.x,
       y: J.y,
       width: J.width,
@@ -245,8 +252,8 @@ describe('Raykov orthogonal router - wide node routing', () => {
 
     runLayout([I, J], [eIJ]);
 
-    console.log(LOG_PREFIX, 'I->J points:', JSON.stringify(eIJ.points, null, 2));
-    console.log(LOG_PREFIX, 'J node:', { x: J.x, y: J.y, width: J.width, height: J.height });
+    debugLog(LOG_PREFIX, 'I->J points:', JSON.stringify(eIJ.points, null, 2));
+    debugLog(LOG_PREFIX, 'J node:', { x: J.x, y: J.y, width: J.width, height: J.height });
 
     // The last point should be on J's boundary
     const lastOnBoundary = lastPointOnNodeBoundary(eIJ.points!, J);
@@ -266,8 +273,8 @@ describe('Raykov orthogonal router - wide node routing', () => {
 
     runLayout([A, B, C], [eAC]);
 
-    console.log(LOG_PREFIX, 'A->C points:', JSON.stringify(eAC.points, null, 2));
-    console.log(LOG_PREFIX, 'B (obstacle) bounds:', {
+    debugLog(LOG_PREFIX, 'A->C points:', JSON.stringify(eAC.points, null, 2));
+    debugLog(LOG_PREFIX, 'B (obstacle) bounds:', {
       minX: B.x - B.width / 2,
       maxX: B.x + B.width / 2,
       minY: B.y - B.height / 2,

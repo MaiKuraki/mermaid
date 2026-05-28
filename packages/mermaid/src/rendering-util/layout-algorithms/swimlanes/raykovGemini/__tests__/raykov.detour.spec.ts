@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { routeEdgesOrthogonal } from '../raykov.js';
 import type { LayoutData } from '../../../../types.js';
 
+const DEBUG = process.env.RAYKOV_DEBUG === 'true';
+const debugLog = (...args: unknown[]) => {
+  if (DEBUG) {
+    console.log(...args);
+  }
+};
+
 interface Point {
   x: number;
   y: number;
@@ -116,13 +123,13 @@ describe('Raykov orthogonal router - detour issue', () => {
     // Check J→E
     expect(eJE.points).toBeDefined();
     const pointsJE = eJE.points!;
-    console.log(LOG_PREFIX, 'J→E points:', JSON.stringify(pointsJE, null, 2));
+    debugLog(LOG_PREFIX, 'J→E points:', JSON.stringify(pointsJE, null, 2));
 
     const yValuesJE = pointsJE.map((p) => p.y);
     const minYJE = Math.min(...yValuesJE);
     const maxYJE = Math.max(...yValuesJE);
     const yRangeJE = maxYJE - minYJE;
-    console.log(LOG_PREFIX, `J→E Y range: ${minYJE} to ${maxYJE} (range: ${yRangeJE})`);
+    debugLog(LOG_PREFIX, `J→E Y range: ${minYJE} to ${maxYJE} (range: ${yRangeJE})`);
 
     // J and E are on the same row (y=117.5), path should be mostly horizontal
     expect(yRangeJE).toBeLessThan(50);
@@ -130,13 +137,13 @@ describe('Raykov orthogonal router - detour issue', () => {
     // Check E→F
     expect(eEF.points).toBeDefined();
     const pointsEF = eEF.points!;
-    console.log(LOG_PREFIX, 'E→F points:', JSON.stringify(pointsEF, null, 2));
+    debugLog(LOG_PREFIX, 'E→F points:', JSON.stringify(pointsEF, null, 2));
 
     const yValuesEF = pointsEF.map((p) => p.y);
     const minYEF = Math.min(...yValuesEF);
     const maxYEF = Math.max(...yValuesEF);
     const yRangeEF = maxYEF - minYEF;
-    console.log(LOG_PREFIX, `E→F Y range: ${minYEF} to ${maxYEF} (range: ${yRangeEF})`);
+    debugLog(LOG_PREFIX, `E→F Y range: ${minYEF} to ${maxYEF} (range: ${yRangeEF})`);
 
     // E and F are on the same row but J is between them - some vertical deviation expected
     // But should route around J efficiently (up or down, not huge detour)

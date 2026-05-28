@@ -4,6 +4,13 @@ import type { LayoutData } from '../../../../types.js';
 
 // cspell:ignore Raykov
 
+const DEBUG = process.env.RAYKOV_DEBUG === 'true';
+const debugLog = (...args: unknown[]) => {
+  if (DEBUG) {
+    console.log(...args);
+  }
+};
+
 // Simple rectangle boundary intersection for tests
 interface Point {
   x: number;
@@ -488,10 +495,10 @@ describe('Raykov orthogonal router (algo-op.md)', () => {
       const labelMinY = edgeLabelNode.y - edgeLabelNode.height / 2;
       const labelMaxY = edgeLabelNode.y + edgeLabelNode.height / 2;
 
-      console.log(
+      debugLog(
         `[EDGE_LABEL_TEST] Label bounds: [${labelMinX}, ${labelMaxX}] x [${labelMinY}, ${labelMaxY}]`
       );
-      console.log(`[EDGE_LABEL_TEST] Edge I→K points:`, eItoK.points);
+      debugLog(`[EDGE_LABEL_TEST] Edge I→K points:`, eItoK.points);
 
       let passedThroughLabel = false;
       for (let k = 0; k < eItoK.points!.length - 1; k++) {
@@ -509,7 +516,7 @@ describe('Raykov orthogonal router (algo-op.md)', () => {
         const intersectY = segMaxY > labelMinY + epsilon && segMinY < labelMaxY - epsilon;
 
         if (intersectX && intersectY) {
-          console.log(
+          debugLog(
             `[EDGE_LABEL_TEST] Segment ${k} [${p1.x.toFixed(1)},${p1.y.toFixed(1)}]->[${p2.x.toFixed(1)},${p2.y.toFixed(1)}] passes through edge label!`
           );
           passedThroughLabel = true;
@@ -599,10 +606,10 @@ describe('Raykov orthogonal router (algo-op.md)', () => {
         maxY: 100 + 120 / 2 - 8, // y + height/2 - small margin
       };
 
-      console.log(
+      debugLog(
         `[EDGE_LABEL_TEST_SAME_Y] Label bounds: [${labelBounds.minX}, ${labelBounds.maxX}] x [${labelBounds.minY}, ${labelBounds.maxY}]`
       );
-      console.log(`[EDGE_LABEL_TEST_SAME_Y] Edge I→K points: ${JSON.stringify(edgeIK.points)}`);
+      debugLog(`[EDGE_LABEL_TEST_SAME_Y] Edge I→K points: ${JSON.stringify(edgeIK.points)}`);
 
       let passedThroughLabel = false;
       const points = edgeIK.points!;
@@ -622,7 +629,7 @@ describe('Raykov orthogonal router (algo-op.md)', () => {
             segMinX < labelBounds.maxX &&
             segMaxX > labelBounds.minX
           ) {
-            console.log(
+            debugLog(
               `[EDGE_LABEL_TEST_SAME_Y] Segment ${k} [${p1.x.toFixed(1)},${p1.y.toFixed(1)}]->[${p2.x.toFixed(1)},${p2.y.toFixed(1)}] passes through edge label!`
             );
             passedThroughLabel = true;
@@ -639,7 +646,7 @@ describe('Raykov orthogonal router (algo-op.md)', () => {
             segMinY < labelBounds.maxY &&
             segMaxY > labelBounds.minY
           ) {
-            console.log(
+            debugLog(
               `[EDGE_LABEL_TEST_SAME_Y] Segment ${k} [${p1.x.toFixed(1)},${p1.y.toFixed(1)}]->[${p2.x.toFixed(1)},${p2.y.toFixed(1)}] passes through edge label!`
             );
             passedThroughLabel = true;
@@ -684,9 +691,7 @@ describe('Raykov orthogonal router (algo-op.md)', () => {
       const obsMinY = 22.5 - 45 / 2; // 0
       const obsMaxY = 22.5 + 45 / 2; // 45
 
-      console.log(
-        `RAYKOV TEST: Obstacle Bounds [${obsMinX}, ${obsMaxX}] x [${obsMinY}, ${obsMaxY}]`
-      );
+      debugLog(`RAYKOV TEST: Obstacle Bounds [${obsMinX}, ${obsMaxX}] x [${obsMinY}, ${obsMaxY}]`);
 
       let hitObstacle = false;
       for (let k = 0; k < e1.points!.length - 1; k++) {
@@ -720,12 +725,12 @@ describe('Raykov orthogonal router (algo-op.md)', () => {
             Math.max(segMinY, obsMinY + epsilon) < Math.min(segMaxY, obsMaxY - epsilon);
 
           if (insideX && insideY) {
-            console.log(
+            debugLog(
               `RAYKOV TEST: Segment ${k} [${p1.x},${p1.y}]->[${p2.x},${p2.y}] passes THROUGH obstacle`
             );
             hitObstacle = true;
           } else {
-            console.log(
+            debugLog(
               `RAYKOV TEST: Segment ${k} [${p1.x},${p1.y}]->[${p2.x},${p2.y}] touches/grazes obstacle`
             );
           }

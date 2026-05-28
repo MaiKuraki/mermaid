@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { routeEdgesOrthogonal } from '../raykov.js';
 import type { LayoutData } from '../../../../types.js';
 
+const DEBUG = process.env.RAYKOV_DEBUG === 'true';
+const debugLog = (...args: unknown[]) => {
+  if (DEBUG) {
+    console.log(...args);
+  }
+};
+
 interface Point {
   x: number;
   y: number;
@@ -202,8 +209,8 @@ describe('Raykov orthogonal router crossing repro', () => {
     // The invariant we actually need is that the two polylines are
     // DISTINCT (not overlapping segment-for-segment), not that D->H
     // visibly bows out to the left. Verify that here.
-    console.log('eDE.points:', JSON.stringify(eDE.points));
-    console.log('eDH.points:', JSON.stringify(eDH.points));
+    debugLog('eDE.points:', JSON.stringify(eDE.points));
+    debugLog('eDH.points:', JSON.stringify(eDH.points));
     expect(JSON.stringify(eDE.points)).not.toEqual(JSON.stringify(eDH.points));
   });
 
