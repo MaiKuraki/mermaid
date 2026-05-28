@@ -5,8 +5,10 @@ import {
   collectRealNodeBounds,
   orthogonalSegmentsCross,
   overlapLength,
+  portForRectSide,
   segmentHitsAnyRect,
 } from './geometry.js';
+import type { RectSide } from './geometry.js';
 
 const EPS = 1e-3;
 const MIN_SHARED = 8;
@@ -29,21 +31,7 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
     return bends;
   };
 
-  type Side = 'top' | 'bottom' | 'left' | 'right';
-  const sides: Side[] = ['top', 'bottom', 'left', 'right'];
-
-  const portForSide = (n: NodeBoundsInfo, side: Side): { x: number; y: number } => {
-    switch (side) {
-      case 'top':
-        return { x: n.cx, y: n.rect.top };
-      case 'bottom':
-        return { x: n.cx, y: n.rect.bottom };
-      case 'left':
-        return { x: n.rect.left, y: n.cy };
-      case 'right':
-        return { x: n.rect.right, y: n.cy };
-    }
-  };
+  const sides: RectSide[] = ['top', 'bottom', 'left', 'right'];
 
   // Anchor offset for port exit. Each port's first/last segment must
   // extend in the port's perpendicular direction by at least this many
@@ -58,9 +46,9 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
   // direction) — in which case the caller should try another pair.
   const buildOrthogonalPath = (
     src: { x: number; y: number },
-    srcSide: Side,
+    srcSide: RectSide,
     dst: { x: number; y: number },
-    dstSide: Side
+    dstSide: RectSide
   ): { x: number; y: number }[] | undefined => {
     const srcH = srcSide === 'left' || srcSide === 'right';
     const dstH = dstSide === 'left' || dstSide === 'right';
@@ -159,9 +147,9 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
 
   const buildOrthogonalPathCandidates = (
     src: { x: number; y: number },
-    srcSide: Side,
+    srcSide: RectSide,
     dst: { x: number; y: number },
-    dstSide: Side
+    dstSide: RectSide
   ): { x: number; y: number }[][] => {
     const paths: { x: number; y: number }[][] = [];
     const base = buildOrthogonalPath(src, srcSide, dst, dstSide);
@@ -302,12 +290,12 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
   // LATER, so the raw attach points may sit a few units inside the
   // node rect. Nearest-side works regardless of whether the point is
   // on, just outside, or a few units inside the rect.
-  const nearestSideOfRect = (pt: { x: number; y: number }, info: NodeBoundsInfo): Side => {
+  const nearestSideOfRect = (pt: { x: number; y: number }, info: NodeBoundsInfo): RectSide => {
     const dTop = Math.abs(pt.y - info.rect.top);
     const dBottom = Math.abs(pt.y - info.rect.bottom);
     const dLeft = Math.abs(pt.x - info.rect.left);
     const dRight = Math.abs(pt.x - info.rect.right);
-    let best: Side = 'top';
+    let best: RectSide = 'top';
     let bestDist = dTop;
     if (dBottom < bestDist) {
       best = 'bottom';
@@ -325,11 +313,11 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
   };
 
   interface FaceClaim {
-    side: Side;
+    side: RectSide;
     edgeId: string;
   }
   const faceClaims = new Map<string, FaceClaim[]>();
-  const addFaceClaim = (nodeId: string, side: Side, edgeId: string) => {
+  const addFaceClaim = (nodeId: string, side: RectSide, edgeId: string) => {
     if (!faceClaims.has(nodeId)) {
       faceClaims.set(nodeId, []);
     }
@@ -360,7 +348,7 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
     }
   }
 
-  const faceIsClaimed = (nodeId: string, side: Side, ignoreEdgeId: string): boolean => {
+  const faceIsClaimed = (nodeId: string, side: RectSide, ignoreEdgeId: string): boolean => {
     const claims = faceClaims.get(nodeId);
     if (!claims) {
       return false;
@@ -409,12 +397,12 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
       if (faceIsClaimed(srcId, srcSide, edgeId)) {
         continue;
       }
-      const srcPort = portForSide(srcInfo, srcSide);
+      const srcPort = portForRectSide(srcInfo, srcSide);
       for (const dstSide of sides) {
         if (faceIsClaimed(dstId, dstSide, edgeId)) {
           continue;
         }
-        const dstPort = portForSide(dstInfo, dstSide);
+        const dstPort = portForRectSide(dstInfo, dstSide);
         for (const path of buildOrthogonalPathCandidates(srcPort, srcSide, dstPort, dstSide)) {
           if (pathHitsNode(path, [srcId, dstId])) {
             continue;

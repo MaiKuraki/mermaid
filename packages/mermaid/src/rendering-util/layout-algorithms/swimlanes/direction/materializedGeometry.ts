@@ -7,9 +7,10 @@ import {
   overlapLength,
   orthogonalSegmentsForPoints,
   orthogonalSegmentsStrictlyCross,
+  portForRectSide,
   segmentBoundsOverlapRect,
 } from './geometry.js';
-import type { OrthogonalSegment, Point, RectBounds } from './geometry.js';
+import type { OrthogonalSegment, Point, RectBounds, RectSide } from './geometry.js';
 
 const EPS_LOCAL = 1e-3;
 const MIN_SHARED = 8;
@@ -518,8 +519,6 @@ export function resolveRenderedOrthogonalCrossings(
   const ANCHOR = 20;
   const MAX_ITERATIONS = 4;
 
-  type Side = 'top' | 'bottom' | 'left' | 'right';
-
   interface NodeInfo {
     id: string;
     cx: number;
@@ -554,7 +553,7 @@ export function resolveRenderedOrthogonalCrossings(
   }
 
   const nodeInfoById = new Map(realNodes.map((node) => [node.id, node]));
-  const sides: Side[] = ['top', 'bottom', 'left', 'right'];
+  const sides: RectSide[] = ['top', 'bottom', 'left', 'right'];
   const outsideTracks = {
     top: Math.min(...realNodes.map((node) => node.rect.top)) - ANCHOR,
     bottom: Math.max(...realNodes.map((node) => node.rect.bottom)) + ANCHOR,
@@ -650,24 +649,11 @@ export function resolveRenderedOrthogonalCrossings(
     return bends;
   };
 
-  const portForSide = (node: NodeInfo, side: Side): PointLite => {
-    switch (side) {
-      case 'top':
-        return { x: node.cx, y: node.rect.top };
-      case 'bottom':
-        return { x: node.cx, y: node.rect.bottom };
-      case 'left':
-        return { x: node.rect.left, y: node.cy };
-      case 'right':
-        return { x: node.rect.right, y: node.cy };
-    }
-  };
-
   const buildCandidatesForSides = (
     src: PointLite,
-    srcSide: Side,
+    srcSide: RectSide,
     dst: PointLite,
-    dstSide: Side
+    dstSide: RectSide
   ): PointLite[][] => {
     const candidates: PointLite[][] = [];
     const srcH = srcSide === 'left' || srcSide === 'right';
@@ -753,10 +739,10 @@ export function resolveRenderedOrthogonalCrossings(
 
     const candidates: PointLite[][] = [];
     for (const srcSide of sides) {
-      const srcPort = portForSide(srcNode, srcSide);
+      const srcPort = portForRectSide(srcNode, srcSide);
       for (const dstSide of sides) {
         candidates.push(
-          ...buildCandidatesForSides(srcPort, srcSide, portForSide(dstNode, dstSide), dstSide)
+          ...buildCandidatesForSides(srcPort, srcSide, portForRectSide(dstNode, dstSide), dstSide)
         );
       }
     }

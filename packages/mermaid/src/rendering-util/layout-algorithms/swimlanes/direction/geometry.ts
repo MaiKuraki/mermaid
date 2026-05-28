@@ -5,6 +5,8 @@ export interface Point {
   y: number;
 }
 
+export type RectSide = 'top' | 'bottom' | 'left' | 'right';
+
 export interface RectBounds {
   left: number;
   right: number;
@@ -200,6 +202,22 @@ export function rectFromCenterSize(
     top: cy - height / 2,
     bottom: cy + height / 2,
   };
+}
+
+export function portForRectSide(
+  node: { cx: number; cy: number; rect: RectBounds },
+  side: RectSide
+): Point {
+  switch (side) {
+    case 'top':
+      return { x: node.cx, y: node.rect.top };
+    case 'bottom':
+      return { x: node.cx, y: node.rect.bottom };
+    case 'left':
+      return { x: node.rect.left, y: node.cy };
+    case 'right':
+      return { x: node.rect.right, y: node.cy };
+  }
 }
 
 export function collectRealNodeBounds(nodes: Iterable<NodeBoundsInput>): {
