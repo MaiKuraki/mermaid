@@ -12,7 +12,6 @@ import { LAYERING } from './config.js';
 
 export interface LayoutOptions {
   // Layering
-  preferLongEdgesStraight?: boolean;
   compactSingleInput?: boolean; // default true for compact swimlanes
   ignoreCrossLaneEdges?: boolean;
   optimizeRanksByCrossings?: boolean;
@@ -47,7 +46,6 @@ export function sugiyamaLayout(g: Graph, opts?: LayoutOptions): LayoutResult {
       })
     : assignLayers_Gravity(gAcyclic, {
         compactSingleInput: opts?.compactSingleInput ?? LAYERING.DEFAULT_COMPACT_SINGLE_INPUT,
-        preferLongEdgesStraight: opts?.preferLongEdgesStraight,
         ignoreCrossLaneEdges: false,
         optimizeRanksByCrossings: opts?.optimizeRanksByCrossings,
       });
