@@ -4,6 +4,8 @@ import {
   classifyThreeSegmentRoute,
   collectNodeRectEntries,
   rectFromCenterSize,
+  sameX,
+  sameY,
   segmentBoundsOverlapRect,
 } from './geometry.js';
 import type { Point } from './geometry.js';
@@ -95,10 +97,10 @@ export function straightenStalePortOffsets(edges: Edge[], nodeByIdMap: Map<strin
       }
       // If the incident segment is collinear on the requested axis,
       // return that axis coordinate.
-      if (axis === 'y' && Math.abs(incidentSeg.a.y - incidentSeg.b.y) < EPS) {
+      if (axis === 'y' && sameY(incidentSeg.a, incidentSeg.b, EPS)) {
         return incidentSeg.a.y;
       }
-      if (axis === 'x' && Math.abs(incidentSeg.a.x - incidentSeg.b.x) < EPS) {
+      if (axis === 'x' && sameX(incidentSeg.a, incidentSeg.b, EPS)) {
         return incidentSeg.a.x;
       }
     }
@@ -291,17 +293,15 @@ export function straightenStalePortOffsets(edges: Edge[], nodeByIdMap: Map<strin
       if (nMaxX > oMinX && nMinX < oMaxX && nMaxY > oMinY && nMinY < oMaxY) {
         // Overlap in bounding box — check if segments are collinear
         // (acceptable, same flow) vs perpendicular crossing.
-        const newIsH = Math.abs(newStart.y - newEnd.y) < EPS;
-        const othIsH = Math.abs(seg.a.y - seg.b.y) < EPS;
+        const newIsH = sameY(newStart, newEnd, EPS);
+        const othIsH = sameY(seg.a, seg.b, EPS);
         if (newIsH === othIsH) {
           // Parallel. A hug would require the other segment to share
           // or nearly share the axis coordinate. For collinear along
           // the flow (e.g. L_E_G_0 + L_G_F_0 both at y=240 through G),
           // they touch only at the shared endpoint — that's fine.
           // Reject only if there's a non-endpoint overlap.
-          const shareAxis = newIsH
-            ? Math.abs(newStart.y - seg.a.y) < EPS
-            : Math.abs(newStart.x - seg.a.x) < EPS;
+          const shareAxis = newIsH ? sameY(newStart, seg.a, EPS) : sameX(newStart, seg.a, EPS);
           if (shareAxis) {
             // Check for non-endpoint x (or y) overlap.
             const overlapLo = newIsH
