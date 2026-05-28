@@ -1,4 +1,11 @@
-import { orthogonalizePolyline, rectFromCenterSize, simplifyPolyline } from './geometry.js';
+import {
+  orthogonalizePolyline,
+  rectFromCenterSize,
+  samePoint,
+  sameX,
+  sameY,
+  simplifyPolyline,
+} from './geometry.js';
 import type { Point, RectBounds } from './geometry.js';
 
 const EPS = 1e-3;
@@ -31,11 +38,11 @@ function strictlyInside(p: Point, r: NodeRect): boolean {
 // Given an axis-aligned segment from outside a rect to inside it, return the
 // point where the segment enters the rect boundary.
 function segmentEnterPoint(outside: Point, inside: Point, r: NodeRect): Point {
-  if (Math.abs(outside.y - inside.y) < EPS) {
+  if (sameY(outside, inside, EPS)) {
     const x = outside.x < r.left ? r.left : r.right;
     return { x, y: outside.y };
   }
-  if (Math.abs(outside.x - inside.x) < EPS) {
+  if (sameX(outside, inside, EPS)) {
     const y = outside.y < r.top ? r.top : r.bottom;
     return { x: outside.x, y };
   }
@@ -103,7 +110,7 @@ function snapEndpointToBoundary(
   r: NodeRect,
   useApproachSide = false
 ): Point {
-  if (Math.abs(inner.y - endpoint.y) < EPS) {
+  if (sameY(inner, endpoint, EPS)) {
     if (endpoint.y < r.top - EPS || endpoint.y > r.bottom + EPS) {
       return endpoint;
     }
@@ -118,7 +125,7 @@ function snapEndpointToBoundary(
     const toLeft = Math.abs(endpoint.x - r.left) <= Math.abs(endpoint.x - r.right);
     return { x: toLeft ? r.left : r.right, y: inner.y };
   }
-  if (Math.abs(inner.x - endpoint.x) < EPS) {
+  if (sameX(inner, endpoint, EPS)) {
     if (endpoint.x < r.left - EPS || endpoint.x > r.right + EPS) {
       return endpoint;
     }
@@ -140,7 +147,7 @@ function firstDistinctAdjacent(points: Point[], endpointIndex: number, step: 1 |
   const endpoint = points[endpointIndex];
   for (let index = endpointIndex + step; index >= 0 && index < points.length; index += step) {
     const candidate = points[index];
-    if (Math.abs(candidate.x - endpoint.x) > EPS || Math.abs(candidate.y - endpoint.y) > EPS) {
+    if (!samePoint(candidate, endpoint, EPS)) {
       return candidate;
     }
   }
@@ -168,13 +175,13 @@ function borderSideForSegment(a: Point, b: Point, r: NodeRect): BorderSide | und
 function leavesOutward(side: BorderSide, from: Point, to: Point, r: NodeRect): boolean {
   switch (side) {
     case 'top':
-      return Math.abs(from.x - to.x) < EPS && to.y < r.top - EPS;
+      return sameX(from, to, EPS) && to.y < r.top - EPS;
     case 'bottom':
-      return Math.abs(from.x - to.x) < EPS && to.y > r.bottom + EPS;
+      return sameX(from, to, EPS) && to.y > r.bottom + EPS;
     case 'left':
-      return Math.abs(from.y - to.y) < EPS && to.x < r.left - EPS;
+      return sameY(from, to, EPS) && to.x < r.left - EPS;
     case 'right':
-      return Math.abs(from.y - to.y) < EPS && to.x > r.right + EPS;
+      return sameY(from, to, EPS) && to.x > r.right + EPS;
   }
 }
 
