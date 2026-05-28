@@ -4,6 +4,9 @@ import {
   dedupeConsecutivePoints,
   isHorizontalSegment,
   isVerticalSegment,
+  samePoint,
+  sameX,
+  sameY,
   buildOrthogonalPortPath,
   overlapLength,
   orthogonalSegmentsForPoints,
@@ -44,6 +47,9 @@ const sameAxisOverlap = (a: SegmentLite, b: SegmentLite): number => {
 };
 
 const segmentsFor = orthogonalSegmentsForPoints;
+
+const orthogonallyAligned = (a: PointLite, b: PointLite): boolean =>
+  sameX(a, b, EPS_LOCAL) || sameY(a, b, EPS_LOCAL);
 
 export function separateSharedRenderedTerminalLanes(
   edges: any[],
@@ -104,14 +110,11 @@ export function separateSharedRenderedTerminalLanes(
     const adjacent = atStart ? points[1] : points[points.length - 2];
     const boundary = rectIntersect(node, endpoint);
     let railEnd = endpoint;
-    if (
-      Math.abs(adjacent.x - boundary.x) < EPS_LOCAL ||
-      Math.abs(adjacent.y - boundary.y) < EPS_LOCAL
-    ) {
+    if (orthogonallyAligned(adjacent, boundary)) {
       railEnd = adjacent;
     }
 
-    if (Math.abs(boundary.x - railEnd.x) < EPS_LOCAL) {
+    if (sameX(boundary, railEnd, EPS_LOCAL)) {
       return {
         edge,
         edgeId: String((edge as { id?: string }).id ?? ''),
@@ -126,7 +129,7 @@ export function separateSharedRenderedTerminalLanes(
         rect,
       };
     }
-    if (Math.abs(boundary.y - railEnd.y) < EPS_LOCAL) {
+    if (sameY(boundary, railEnd, EPS_LOCAL)) {
       return {
         edge,
         edgeId: String((edge as { id?: string }).id ?? ''),
@@ -246,33 +249,20 @@ export function separateSharedRenderedTerminalLanes(
     }
 
     if (lane.atStart) {
-      const railEndIsAdjacent =
-        points.length > 1 &&
-        Math.abs(points[1].x - lane.railEnd.x) < EPS_LOCAL &&
-        Math.abs(points[1].y - lane.railEnd.y) < EPS_LOCAL;
+      const railEndIsAdjacent = points.length > 1 && samePoint(points[1], lane.railEnd, EPS_LOCAL);
       const rest = points.slice(railEndIsAdjacent ? 2 : 1);
       const next = rest[0];
-      if (
-        next &&
-        Math.abs(next.x - shiftedRailEnd.x) > EPS_LOCAL &&
-        Math.abs(next.y - shiftedRailEnd.y) > EPS_LOCAL
-      ) {
+      if (next && !orthogonallyAligned(next, shiftedRailEnd)) {
         return undefined;
       }
       return [shiftedBoundary, shiftedRailEnd, ...rest];
     }
 
     const railEndIsAdjacent =
-      points.length > 1 &&
-      Math.abs(points[points.length - 2].x - lane.railEnd.x) < EPS_LOCAL &&
-      Math.abs(points[points.length - 2].y - lane.railEnd.y) < EPS_LOCAL;
+      points.length > 1 && samePoint(points[points.length - 2], lane.railEnd, EPS_LOCAL);
     const before = points.slice(0, railEndIsAdjacent ? -2 : -1);
     const previous = before[before.length - 1];
-    if (
-      previous &&
-      Math.abs(previous.x - shiftedRailEnd.x) > EPS_LOCAL &&
-      Math.abs(previous.y - shiftedRailEnd.y) > EPS_LOCAL
-    ) {
+    if (previous && !orthogonallyAligned(previous, shiftedRailEnd)) {
       return undefined;
     }
     return [...before, shiftedRailEnd, shiftedBoundary];
@@ -435,9 +425,9 @@ export function collapseRedundantRectangularDoglegs(
       isVerticalSegment(p1, p2) &&
       isHorizontalSegment(p2, p3) &&
       isVerticalSegment(p3, p4) &&
-      Math.abs(p0.x - p3.x) < EPS_LOCAL &&
-      Math.abs(p0.x - p4.x) < EPS_LOCAL &&
-      Math.abs(p1.x - p2.x) < EPS_LOCAL &&
+      sameX(p0, p3, EPS_LOCAL) &&
+      sameX(p0, p4, EPS_LOCAL) &&
+      sameX(p1, p2, EPS_LOCAL) &&
       (p1.x - p0.x) * (p3.x - p2.x) < 0;
 
     const terminalHorizontalDogleg =
@@ -445,9 +435,9 @@ export function collapseRedundantRectangularDoglegs(
       isHorizontalSegment(p1, p2) &&
       isVerticalSegment(p2, p3) &&
       isHorizontalSegment(p3, p4) &&
-      Math.abs(p0.y - p3.y) < EPS_LOCAL &&
-      Math.abs(p0.y - p4.y) < EPS_LOCAL &&
-      Math.abs(p1.y - p2.y) < EPS_LOCAL &&
+      sameY(p0, p3, EPS_LOCAL) &&
+      sameY(p0, p4, EPS_LOCAL) &&
+      sameY(p1, p2, EPS_LOCAL) &&
       (p1.y - p0.y) * (p3.y - p2.y) < 0;
 
     if (terminalVerticalDogleg || terminalHorizontalDogleg) {
@@ -465,9 +455,9 @@ export function collapseRedundantRectangularDoglegs(
       isVerticalSegment(p2, p3) &&
       isHorizontalSegment(p3, p4) &&
       isVerticalSegment(p4, p5) &&
-      Math.abs(p0.x - p4.x) < EPS_LOCAL &&
-      Math.abs(p0.x - p5.x) < EPS_LOCAL &&
-      Math.abs(p2.x - p3.x) < EPS_LOCAL &&
+      sameX(p0, p4, EPS_LOCAL) &&
+      sameX(p0, p5, EPS_LOCAL) &&
+      sameX(p2, p3, EPS_LOCAL) &&
       (p2.x - p1.x) * (p4.x - p3.x) < 0;
 
     const horizontalDogleg =
@@ -476,9 +466,9 @@ export function collapseRedundantRectangularDoglegs(
       isHorizontalSegment(p2, p3) &&
       isVerticalSegment(p3, p4) &&
       isHorizontalSegment(p4, p5) &&
-      Math.abs(p0.y - p4.y) < EPS_LOCAL &&
-      Math.abs(p0.y - p5.y) < EPS_LOCAL &&
-      Math.abs(p2.y - p3.y) < EPS_LOCAL &&
+      sameY(p0, p4, EPS_LOCAL) &&
+      sameY(p0, p5, EPS_LOCAL) &&
+      sameY(p2, p3, EPS_LOCAL) &&
       (p2.y - p1.y) * (p4.y - p3.y) < 0;
 
     if (!verticalDogleg && !horizontalDogleg) {
