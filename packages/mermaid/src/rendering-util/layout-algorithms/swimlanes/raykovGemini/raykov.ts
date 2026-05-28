@@ -100,6 +100,10 @@ function sharedLineEndpointCoord(line: RoutedLine, nextLine: RoutedLine): number
     : line.from;
 }
 
+function pointOnLine(line: RoutedLine, along: number): Point {
+  return line.orient === 'vertical' ? { x: line.coord, y: along } : { x: along, y: line.coord };
+}
+
 // ---------------------------------------------------------------------------
 // Orthogonal Router Implementation
 // ---------------------------------------------------------------------------
@@ -2088,60 +2092,31 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     for (let k = 0; k < lines.length; k++) {
       const line = lines[k];
       const prevPt = newPoints[newPoints.length - 1];
+      const prevAlong = line.orient === 'vertical' ? prevPt.y : prevPt.x;
+      const prevTrackCoord = line.orient === 'vertical' ? prevPt.x : prevPt.y;
+      const nextLine = lines[k + 1];
+      const hasNextLine = k < lines.length - 1;
 
-      if (line.orient === 'vertical') {
-        if (Math.abs(prevPt.x - line.coord) > EPS) {
-          newPoints.push({ x: line.coord, y: prevPt.y });
+      if (Math.abs(prevTrackCoord - line.coord) > EPS) {
+        newPoints.push(pointOnLine(line, prevAlong));
+      }
+
+      if (hasNextLine && nextLine.orient === line.orient) {
+        if (Math.abs(line.coord - nextLine.coord) > EPS) {
+          const junction =
+            line.orient === 'vertical'
+              ? (prevAlong + nextLine.from) / 2
+              : sharedLineEndpointCoord(line, nextLine);
+          newPoints.push(pointOnLine(line, junction), pointOnLine(nextLine, junction));
+        } else if (k === 0 || k === lines.length - 2) {
+          newPoints.push(pointOnLine(line, sharedLineEndpointCoord(line, nextLine)));
         }
-        // Check if next line is parallel (collinear join)
-        if (k < lines.length - 1 && lines[k + 1].orient === 'vertical') {
-          const nextLine = lines[k + 1];
-          if (Math.abs(line.coord - nextLine.coord) > EPS) {
-            const midY = (prevPt.y + nextLine.from) / 2;
-            // Step needed.
-            newPoints.push({ x: line.coord, y: midY }, { x: nextLine.coord, y: midY });
-          } else {
-            // Collinear, same track.
-            // Force add vertex if requested (k=0, k=len-2)
-            if (k === 0 || k === lines.length - 2) {
-              const junctionX = line.coord;
-              const junctionY = sharedLineEndpointCoord(line, nextLine);
-              newPoints.push({ x: junctionX, y: junctionY });
-            }
-          }
-        } else if (k < lines.length - 1) {
-          const nextLine = lines[k + 1];
-          newPoints.push({ x: line.coord, y: nextLine.coord });
-        } else {
-          const endY =
-            Math.abs(line.from - prevPt.y) < Math.abs(line.to - prevPt.y) ? line.to : line.from;
-          newPoints.push({ x: line.coord, y: endY });
-        }
+      } else if (hasNextLine) {
+        newPoints.push(pointOnLine(line, nextLine.coord));
       } else {
-        if (Math.abs(prevPt.y - line.coord) > EPS) {
-          newPoints.push({ x: prevPt.x, y: line.coord });
-        }
-        if (k < lines.length - 1 && lines[k + 1].orient === 'horizontal') {
-          const nextLine = lines[k + 1];
-          if (Math.abs(line.coord - nextLine.coord) > EPS) {
-            const junctionX = sharedLineEndpointCoord(line, nextLine);
-            newPoints.push({ x: junctionX, y: line.coord }, { x: junctionX, y: nextLine.coord });
-          } else {
-            // Collinear, same track.
-            if (k === 0 || k === lines.length - 2) {
-              const junctionY = line.coord;
-              const junctionX = sharedLineEndpointCoord(line, nextLine);
-              newPoints.push({ x: junctionX, y: junctionY });
-            }
-          }
-        } else if (k < lines.length - 1) {
-          const nextLine = lines[k + 1];
-          newPoints.push({ x: nextLine.coord, y: line.coord });
-        } else {
-          const endX =
-            Math.abs(line.from - prevPt.x) < Math.abs(line.to - prevPt.x) ? line.to : line.from;
-          newPoints.push({ x: endX, y: line.coord });
-        }
+        const endAlong =
+          Math.abs(line.from - prevAlong) < Math.abs(line.to - prevAlong) ? line.to : line.from;
+        newPoints.push(pointOnLine(line, endAlong));
       }
     }
 
