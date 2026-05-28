@@ -263,57 +263,46 @@ function createTrackAllocator(
 ) {
   const { occupies, reserveInterval } = intervalUtils;
 
-  // Per-corridor vertical track allocation by overlapping y-intervals
-  const corridorRes = new Map<string, Map<number, Interval[]>>();
-
-  const chooseTrackOffset = (key: string, y1: number, y2: number): number => {
-    let tracks = corridorRes.get(key);
+  const intervalsForTrack = (
+    reservations: Map<string, Map<number, Interval[]>>,
+    key: string,
+    track: number
+  ): Interval[] => {
+    let tracks = reservations.get(key);
     if (!tracks) {
       tracks = new Map<number, Interval[]>();
-      corridorRes.set(key, tracks);
+      reservations.set(key, tracks);
     }
-    let k = 0;
-    while (true) {
-      let laneIntervals = tracks.get(k);
-      if (!laneIntervals) {
-        laneIntervals = [];
-        tracks.set(k, laneIntervals);
-        reserveInterval(laneIntervals, y1, y2);
+    let laneIntervals = tracks.get(track);
+    if (!laneIntervals) {
+      laneIntervals = [];
+      tracks.set(track, laneIntervals);
+    }
+    return laneIntervals;
+  };
+
+  const chooseTrack = (
+    reservations: Map<string, Map<number, Interval[]>>,
+    key: string,
+    a: number,
+    b: number
+  ): number => {
+    for (let k = 0; ; k++) {
+      const laneIntervals = intervalsForTrack(reservations, key, k);
+      if (!occupies(laneIntervals, a, b)) {
+        reserveInterval(laneIntervals, a, b);
         return k * edgeGap;
       }
-      if (!occupies(laneIntervals, y1, y2)) {
-        reserveInterval(laneIntervals, y1, y2);
-        return k * edgeGap;
-      }
-      k++;
     }
   };
+
+  const corridorRes = new Map<string, Map<number, Interval[]>>();
 
   // Horizontal corridor track allocation by overlapping x-intervals per corridor@layer
   const hCorridorRes = new Map<string, Map<number, Interval[]>>();
 
-  const chooseHTrackOffset = (key: string, x1: number, x2: number): number => {
-    let tracks = hCorridorRes.get(key);
-    if (!tracks) {
-      tracks = new Map<number, Interval[]>();
-      hCorridorRes.set(key, tracks);
-    }
-    let k = 0;
-    while (true) {
-      let laneIntervals = tracks.get(k);
-      if (!laneIntervals) {
-        laneIntervals = [];
-        tracks.set(k, laneIntervals);
-        reserveInterval(laneIntervals, x1, x2);
-        return k * edgeGap;
-      }
-      if (!occupies(laneIntervals, x1, x2)) {
-        reserveInterval(laneIntervals, x1, x2);
-        return k * edgeGap;
-      }
-      k++;
-    }
-  };
+  const chooseHTrackOffset = (key: string, x1: number, x2: number): number =>
+    chooseTrack(hCorridorRes, key, x1, x2);
 
   // Straight-line occupancy to avoid sharing the same lane/track
   const horizRes = new Map<string, Interval[]>();
@@ -362,46 +351,17 @@ function createTrackAllocator(
   // Boundary vertical track allocation (to avoid stacked taps at lane edges)
   const boundaryVRes = new Map<string, Map<number, Interval[]>>();
 
-  const chooseBoundaryVTrack = (key: string, y1: number, y2: number): number => {
-    let tracks = boundaryVRes.get(key);
-    if (!tracks) {
-      tracks = new Map<number, Interval[]>();
-      boundaryVRes.set(key, tracks);
-    }
-    let k = 0;
-    while (true) {
-      let laneIntervals = tracks.get(k);
-      if (!laneIntervals) {
-        laneIntervals = [];
-        tracks.set(k, laneIntervals);
-        reserveInterval(laneIntervals, y1, y2);
-        return k * edgeGap;
-      }
-      if (!occupies(laneIntervals, y1, y2)) {
-        reserveInterval(laneIntervals, y1, y2);
-        return k * edgeGap;
-      }
-      k++;
-    }
-  };
+  const chooseBoundaryVTrack = (key: string, y1: number, y2: number): number =>
+    chooseTrack(boundaryVRes, key, y1, y2);
 
   // Allocate vertical track in a corridor keyed by corridor id, but also ensure
   // global vertical occupancy by absolute X so parallel verticals that share X
   // across different logical corridors don't overlap.
   const allocateCorridorVTrack = (key: string, baseX: number, y1: number, y2: number): number => {
-    let tracks = corridorRes.get(key);
-    if (!tracks) {
-      tracks = new Map<number, Interval[]>();
-      corridorRes.set(key, tracks);
-    }
     const lo = Math.min(y1, y2);
     const hi = Math.max(y1, y2);
     for (let k = 0; ; k++) {
-      let laneIntervals = tracks.get(k);
-      if (!laneIntervals) {
-        laneIntervals = [];
-        tracks.set(k, laneIntervals);
-      }
+      const laneIntervals = intervalsForTrack(corridorRes, key, k);
       if (!occupies(laneIntervals, lo, hi)) {
         const cx = baseX + k * edgeGap;
         if (canReserveVertical(cx, lo, hi)) {
@@ -414,7 +374,6 @@ function createTrackAllocator(
   };
 
   return {
-    chooseTrackOffset,
     chooseHTrackOffset,
     canReserveHorizontal,
     reserveHorizontal,

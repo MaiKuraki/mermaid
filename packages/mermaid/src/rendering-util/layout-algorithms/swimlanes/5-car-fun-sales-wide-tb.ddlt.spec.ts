@@ -23,6 +23,7 @@ import { validateLayout } from '../layout-utils/validateLayout.js';
 import { loadDdltFixture } from '../ddlt/loadDdltFixture.js';
 
 const FIXTURE_ID = 'swimlanes/5-car-fun-sales-wide-tb';
+const DEBUG = process.env.SWIMLANE_DDLT_DEBUG === '1';
 
 async function runSwimlanes(): Promise<LayoutData> {
   return await loadDdltFixture(FIXTURE_ID, { backendId: 'swimlanes' });
@@ -202,7 +203,9 @@ describe('Swimlanes DDLT — 5-car-fun-sales-wide-tb.mmd', () => {
     const totalBends = breakdown.edges.reduce((acc, e) => acc + Math.max(0, e.points - 2), 0);
     const avgBendsPerEdge = breakdown.edgeCount > 0 ? totalBends / breakdown.edgeCount : 0;
 
-    console.log('[5_CAR_FUN_WIDE_DDLT] breakdown:', JSON.stringify(breakdown, null, 2));
+    if (DEBUG) {
+      console.log('[5_CAR_FUN_WIDE_DDLT] breakdown:', JSON.stringify(breakdown, null, 2));
+    }
     // Soft-assert so all baseline regressions surface in a single run.
     expect.soft(breakdown.crossings).toBe(0);
     expect.soft(avgBendsPerEdge).toBeLessThan(5);

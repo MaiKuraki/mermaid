@@ -6,6 +6,7 @@ import { routeEdgesOrthogonal } from '../raykovGemini/raykov.js';
 import { applySwimlaneDirectionTransform } from '../direction.js';
 
 const SWIMLANE_E2E_LOG_PREFIX = '[SWIMLANE_E2E]';
+const DEBUG = process.env.SWIMLANE_DDLT_DEBUG === '1';
 
 function makeChainLayout(direction?: string): LayoutData {
   const nodes = ['A', 'B', 'C'].map(
@@ -90,16 +91,16 @@ describe('Swimlanes LR direction — integrated pipeline', () => {
     const xSpanLR = span(lrXs);
     const ySpanLR = span(lrYs);
 
-    // Helpful debug logging for real executions
-
-    console.log(SWIMLANE_E2E_LOG_PREFIX, 'TB vs LR spans and coordinates', {
-      xSpanTB,
-      ySpanTB,
-      xSpanLR,
-      ySpanLR,
-      tbNodes: tbNodes.map((n) => ({ id: n.id, x: n.x, y: n.y })),
-      lrNodes: lrNodes.map((n) => ({ id: n.id, x: n.x, y: n.y })),
-    });
+    if (DEBUG) {
+      console.log(SWIMLANE_E2E_LOG_PREFIX, 'TB vs LR spans and coordinates', {
+        xSpanTB,
+        ySpanTB,
+        xSpanLR,
+        ySpanLR,
+        tbNodes: tbNodes.map((n) => ({ id: n.id, x: n.x, y: n.y })),
+        lrNodes: lrNodes.map((n) => ({ id: n.id, x: n.x, y: n.y })),
+      });
+    }
 
     // In canonical TB orientation the chain should primarily extend vertically.
     expect(xSpanTB).toBeLessThan(ySpanTB);

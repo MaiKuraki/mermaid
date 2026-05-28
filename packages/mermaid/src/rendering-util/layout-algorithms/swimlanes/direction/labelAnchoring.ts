@@ -1,10 +1,9 @@
 // cspell:ignore Helmers Wybrow
-import { log } from '../../../../logger.js';
+import type { Edge, Node } from '../../../types.js';
 
-const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
 const EPS = 1e-3;
 
-export function anchorLabelsToPolyline(edges: any[], nodeByIdMap: Map<string, any>): void {
+export function anchorLabelsToPolyline(edges: Edge[], nodeByIdMap: Map<string, Node>): void {
   // Build a set of foreign polylines once for overlap checks. Labelled
   // originals that haven't been anchored yet are still included — their
   // polylines exist, even if their labels haven't moved.
@@ -21,16 +20,15 @@ export function anchorLabelsToPolyline(edges: any[], nodeByIdMap: Map<string, an
   }
   const allEdgeSegments: SegmentLite[] = [];
   for (const other of edges) {
-    if ((other as { isLayoutOnly?: boolean }).isLayoutOnly) {
+    if (other.isLayoutOnly) {
       continue;
     }
-    const pts = (other as { points?: { x: number; y: number }[] }).points;
+    const pts = other.points;
     if (!pts || pts.length < 2) {
       continue;
     }
-    const eid = String((other as { id?: string }).id ?? '');
     for (let i = 0; i < pts.length - 1; i++) {
-      allEdgeSegments.push({ edgeId: eid, p1: pts[i], p2: pts[i + 1] });
+      allEdgeSegments.push({ edgeId: other.id, p1: pts[i], p2: pts[i + 1] });
     }
   }
 
@@ -41,16 +39,16 @@ export function anchorLabelsToPolyline(edges: any[], nodeByIdMap: Map<string, an
   // node-overlap violations against sibling lane groups.
   const laneGroups: { id: string; rect: RectLite }[] = [];
   for (const n of nodeByIdMap.values()) {
-    const isGroup = (n as { isGroup?: boolean }).isGroup;
-    const parentId = (n as { parentId?: string }).parentId;
+    const isGroup = n.isGroup;
+    const parentId = n.parentId;
     if (isGroup && !parentId) {
-      const cx = (n as { x?: number }).x ?? 0;
-      const cy = (n as { y?: number }).y ?? 0;
-      const w = (n as { width?: number }).width ?? 0;
-      const h = (n as { height?: number }).height ?? 0;
+      const cx = n.x ?? 0;
+      const cy = n.y ?? 0;
+      const w = n.width ?? 0;
+      const h = n.height ?? 0;
       if (w > 0 && h > 0) {
         laneGroups.push({
-          id: String((n as { id?: string }).id ?? ''),
+          id: n.id,
           rect: { left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2 },
         });
       }
@@ -59,18 +57,18 @@ export function anchorLabelsToPolyline(edges: any[], nodeByIdMap: Map<string, an
     if (isGroup) {
       continue;
     }
-    if ((n as { isEdgeLabel?: boolean }).isEdgeLabel) {
+    if (n.isEdgeLabel) {
       continue;
     }
-    const cx = (n as { x?: number }).x ?? 0;
-    const cy = (n as { y?: number }).y ?? 0;
-    const w = (n as { width?: number }).width ?? 0;
-    const h = (n as { height?: number }).height ?? 0;
+    const cx = n.x ?? 0;
+    const cy = n.y ?? 0;
+    const w = n.width ?? 0;
+    const h = n.height ?? 0;
     if (w <= 0 || h <= 0) {
       continue;
     }
     foreignNodeRects.push({
-      nodeId: String((n as { id?: string }).id ?? ''),
+      nodeId: n.id,
       rect: { left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2 },
     });
   }
@@ -152,10 +150,10 @@ export function anchorLabelsToPolyline(edges: any[], nodeByIdMap: Map<string, an
   }
 
   for (const edge of edges) {
-    if ((edge as { isLayoutOnly?: boolean }).isLayoutOnly) {
+    if (edge.isLayoutOnly) {
       continue;
     }
-    const labelId = (edge as { labelNodeId?: string }).labelNodeId;
+    const labelId = edge.labelNodeId;
     if (!labelId) {
       continue;
     }
@@ -163,7 +161,7 @@ export function anchorLabelsToPolyline(edges: any[], nodeByIdMap: Map<string, an
     if (!labelNode) {
       continue;
     }
-    const pts = (edge as { points?: { x: number; y: number }[] }).points;
+    const pts = edge.points;
     if (!pts || pts.length < 2) {
       continue;
     }
@@ -276,9 +274,7 @@ export function anchorLabelsToPolyline(edges: any[], nodeByIdMap: Map<string, an
 
     const tryPool = (
       pool: SegmentCandidate[]
-    ):
-      | { seg: SegmentCandidate; laneId: string; anchor: { midX: number; midY: number } }
-      | undefined => {
+    ): { laneId: string; anchor: { midX: number; midY: number } } | undefined => {
       const rankedPool = rankSegments(pool);
       for (const seg of rankedPool) {
         for (const t of ALONG_SEGMENT_TS) {
@@ -294,8 +290,8 @@ export function anchorLabelsToPolyline(edges: any[], nodeByIdMap: Map<string, an
           ) {
             continue;
           }
-          if (!labelOverlapsAnything(labelId, edge.id ?? '', rect)) {
-            return { seg, laneId, anchor: anchorAtT(seg, t) };
+          if (!labelOverlapsAnything(labelId, edge.id, rect)) {
+            return { laneId, anchor: anchorAtT(seg, t) };
           }
         }
       }
@@ -304,9 +300,7 @@ export function anchorLabelsToPolyline(edges: any[], nodeByIdMap: Map<string, an
 
     const findLaneContainingFallback = (
       pool: SegmentCandidate[]
-    ):
-      | { seg: SegmentCandidate; laneId: string; anchor: { midX: number; midY: number } }
-      | undefined => {
+    ): { laneId: string; anchor: { midX: number; midY: number } } | undefined => {
       const rankedPool = rankSegments(pool);
       for (const seg of rankedPool) {
         const rect: RectLite = {
@@ -322,7 +316,7 @@ export function anchorLabelsToPolyline(edges: any[], nodeByIdMap: Map<string, an
             (placed) => placed.labelId !== labelId && rectsOverlap(rect, placed.rect)
           )
         ) {
-          return { seg, laneId, anchor: { midX: seg.midX, midY: seg.midY } };
+          return { laneId, anchor: { midX: seg.midX, midY: seg.midY } };
         }
       }
       return undefined;
@@ -349,15 +343,6 @@ export function anchorLabelsToPolyline(edges: any[], nodeByIdMap: Map<string, an
       } else {
         placedLabelRects.push({ labelId, rect: chosenRect });
       }
-      log.debug(
-        SWIMLANE_DIR_LOG_PREFIX,
-        `Anchored ${labelId} to segment ${chosen.seg.idx} of ${edge.id} at (${chosen.anchor.midX.toFixed(1)}, ${chosen.anchor.midY.toFixed(1)}) — ${chosen.seg.orientation}, length=${chosen.seg.length.toFixed(1)}, lane=${chosen.laneId}`
-      );
-    } else {
-      log.warn(
-        SWIMLANE_DIR_LOG_PREFIX,
-        `anchorLabelsToPolyline: no lane-containing segment for ${labelId} on ${edge.id} — left at Sugiyama position (label=${lw.toFixed(1)}x${lh.toFixed(1)})`
-      );
     }
   }
 }

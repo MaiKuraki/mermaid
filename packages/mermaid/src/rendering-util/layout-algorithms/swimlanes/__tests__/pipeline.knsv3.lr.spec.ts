@@ -10,6 +10,7 @@ import { validateLayout } from '../../layout-utils/validateLayout.js';
 // cspell:ignore Raykov
 
 const LOG_PREFIX = '[SWIMLANE_KNSV3]';
+const DEBUG = process.env.SWIMLANE_DDLT_DEBUG === '1';
 
 interface TestEdge extends Edge {
   start: string;
@@ -212,7 +213,9 @@ function runKnsv3SwimlanesLR(): {
   // Debug: inspect the canonical TB coordinates for the I->K label edge
   const ikToLabelEdgeTB = (layout.edges as any[]).find((e) => e.id === 'eI-K-to-label');
 
-  console.log(LOG_PREFIX, 'I->K label edge points (TB before LR):', ikToLabelEdgeTB?.points);
+  if (DEBUG) {
+    console.log(LOG_PREFIX, 'I->K label edge points (TB before LR):', ikToLabelEdgeTB?.points);
+  }
 
   // Apply direction-specific transform so that we can assert on LR coordinates.
   applySwimlaneDirectionTransform(layout, 'LR');
@@ -222,13 +225,15 @@ function runKnsv3SwimlanesLR(): {
   if (ijLabelId) {
     const ijLabelNode = layout.nodes.find((n: any) => n.id === ijLabelId);
     if (ijLabelNode) {
-      console.log(LOG_PREFIX, 'I->J label node (LR):', {
-        id: ijLabelNode.id,
-        x: ijLabelNode.x,
-        y: ijLabelNode.y,
-        width: ijLabelNode.width,
-        height: ijLabelNode.height,
-      });
+      if (DEBUG) {
+        console.log(LOG_PREFIX, 'I->J label node (LR):', {
+          id: ijLabelNode.id,
+          x: ijLabelNode.x,
+          y: ijLabelNode.y,
+          width: ijLabelNode.width,
+          height: ijLabelNode.height,
+        });
+      }
     }
   }
 
@@ -312,18 +317,20 @@ describe('Swimlanes LR knsv3 integration', () => {
     const totalBends = breakdown.edges.reduce((acc, e) => acc + Math.max(0, e.points - 2), 0);
     const avgBendsPerEdge = breakdown.edgeCount > 0 ? totalBends / breakdown.edgeCount : 0;
 
-    console.log(
-      `${LOG_PREFIX} knsv3 validateLayout breakdown:`,
-      JSON.stringify(
-        {
-          crossings: breakdown.crossings,
-          totalBends,
-          avgBendsPerEdge,
-        },
-        null,
-        2
-      )
-    );
+    if (DEBUG) {
+      console.log(
+        `${LOG_PREFIX} knsv3 validateLayout breakdown:`,
+        JSON.stringify(
+          {
+            crossings: breakdown.crossings,
+            totalBends,
+            avgBendsPerEdge,
+          },
+          null,
+          2
+        )
+      );
+    }
     // Hard regression pin at the currently achieved value so a
     // regression ABOVE this baseline is caught. Dream target is 0
     // (paper-backed per §118) — iter 8+ should investigate which

@@ -40,11 +40,19 @@ export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): v
 
   const nodeInfoById = new Map<string, NodeInfo>();
   const realNodeRects: { id: string; rect: RectLite }[] = [];
+  // Side table of label-node dimensions so we can grow the rescue delta
+  // far enough to clear a label sitting on the sibling line.
+  const labelDimById = new Map<string, { w: number; h: number }>();
   for (const n of nodes) {
     if ((n as { isGroup?: boolean }).isGroup) {
       continue;
     }
     if ((n as { isEdgeLabel?: boolean }).isEdgeLabel) {
+      const id = String((n as { id?: string }).id ?? '');
+      labelDimById.set(id, {
+        w: (n as { width?: number }).width ?? 0,
+        h: (n as { height?: number }).height ?? 0,
+      });
       continue;
     }
     const cx = (n as { x?: number }).x ?? 0;
@@ -64,6 +72,59 @@ export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): v
     nodeInfoById.set(id, { id, cx, cy, rect });
     realNodeRects.push({ id, rect });
   }
+
+  // Mirrors LABEL_PLACEMENT_BUFFER in labelAnchoring.ts — keeps the rescued
+  // straight outside the buffered label rect anchorLabelsToPolyline tests
+  // against.
+  const LABEL_CLEARANCE_BUFFER = 3;
+
+  const pairKey = (a: string, b: string): string => (a < b ? `${a}::${b}` : `${b}::${a}`);
+
+  // For a given (this-edge, axis) pair, find the largest label half-extent
+  // among any edge sharing the same node pair (anti-parallel siblings) plus
+  // this edge's own label. Used to grow the rescue shift past the label so
+  // anchorLabelsToPolyline can place the label clear of the sibling.
+  const labelClearanceFor = (
+    thisEdge: any,
+    thisSrcId: string,
+    thisDstId: string,
+    axis: 'x' | 'y'
+  ): number => {
+    const targetPair = pairKey(thisSrcId, thisDstId);
+    let maxHalf = 0;
+    const consider = (labelId: string | undefined) => {
+      if (!labelId) {
+        return;
+      }
+      const dim = labelDimById.get(labelId);
+      if (!dim) {
+        return;
+      }
+      const half = axis === 'x' ? dim.w / 2 : dim.h / 2;
+      if (half > maxHalf) {
+        maxHalf = half;
+      }
+    };
+    consider((thisEdge as { labelNodeId?: string }).labelNodeId);
+    for (const other of edges) {
+      if (other === thisEdge) {
+        continue;
+      }
+      if ((other as { isLayoutOnly?: boolean }).isLayoutOnly) {
+        continue;
+      }
+      const oSrc = (other as { start?: string }).start;
+      const oDst = (other as { end?: string }).end;
+      if (!oSrc || !oDst) {
+        continue;
+      }
+      if (pairKey(oSrc, oDst) !== targetPair) {
+        continue;
+      }
+      consider((other as { labelNodeId?: string }).labelNodeId);
+    }
+    return maxHalf > 0 ? maxHalf + LABEL_CLEARANCE_BUFFER : 0;
+  };
 
   const segmentHitsNode = (
     a: { x: number; y: number },
@@ -184,7 +245,22 @@ export function straightenCollinearSiblingDetours(edges: any[], nodes: any[]): v
       continue;
     }
 
-    const deltas = [0, PORT_SHIFT, -PORT_SHIFT];
+    // The rescue moves the line perpendicular to its own direction: a
+    // horizontal rescued line shifts in y (so the label HEIGHT determines
+    // clearance), a vertical one shifts in x (label WIDTH). collinearX
+    // means the rescued line is vertical (nodes share a column).
+    //
+    // When the edge (or an anti-parallel sibling) carries a label, the
+    // small PORT_SHIFT would leave the rescued straight inside the label's
+    // bbox — the label would visually overlap this line. We grow the
+    // shift to clear the label rect. If the wider shift won't fit on the
+    // node face, the bounds check below rejects it and we fall through
+    // without rescuing, which keeps the original 4-point detour — also
+    // correct, since the detour routes far away from the label.
+    const shiftAxis: 'x' | 'y' = collinearX ? 'x' : 'y';
+    const labelShift = labelClearanceFor(edge, srcId, dstId, shiftAxis);
+    const effectiveShift = labelShift > PORT_SHIFT ? labelShift : PORT_SHIFT;
+    const deltas = [0, effectiveShift, -effectiveShift];
     for (const delta of deltas) {
       const shiftedSrc = { ...targetSrc };
       const shiftedDst = { ...targetDst };

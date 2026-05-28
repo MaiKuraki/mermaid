@@ -4,7 +4,6 @@ import type { Graph, NodeId } from './helpers.js';
  * Options controlling how layers are assigned in the Sugiyama pipeline.
  */
 export interface LayeringOptions {
-  widthBound?: number;
   preferLongEdgesStraight?: boolean;
   /** If true, a node with exactly one incoming edge inherits its predecessor's layer. */
   compactSingleInput?: boolean;

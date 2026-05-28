@@ -18,6 +18,7 @@ import { validateLayout } from '../layout-utils/validateLayout.js';
 import { loadDdltFixture } from '../ddlt/loadDdltFixture.js';
 
 const FIXTURE_ID = 'swimlanes/6-legal-constr-sales';
+const DEBUG = process.env.SWIMLANE_DDLT_DEBUG === '1';
 
 async function runSwimlanes(): Promise<LayoutData> {
   return await loadDdltFixture(FIXTURE_ID, { backendId: 'swimlanes' });
@@ -35,44 +36,6 @@ describe('Swimlanes DDLT — 6-legal-constr-sales.mmd', () => {
     }
     expect(result.ok).toBe(true);
     expect(result.issues).toEqual([]);
-  });
-
-  it('Level 0: baseline telemetry — dump node positions + I-edge polylines', async () => {
-    const layout = await runSwimlanes();
-    const nodes = (layout.nodes ?? []).filter(
-      (n) => !n.isGroup && !(n as { isEdgeLabel?: boolean }).isEdgeLabel
-    );
-    const summary = nodes
-      .map((n) => {
-        const x = (n as { x?: number }).x ?? NaN;
-        const y = (n as { y?: number }).y ?? NaN;
-        const w = (n as { width?: number }).width ?? NaN;
-        const h = (n as { height?: number }).height ?? NaN;
-        return {
-          id: n.id,
-          cx: x,
-          cy: y,
-          w,
-          h,
-          left: x - w / 2,
-          right: x + w / 2,
-          top: y - h / 2,
-          bottom: y + h / 2,
-        };
-      })
-      .sort((a, b) => (a.cx === b.cx ? a.cy - b.cy : a.cx - b.cx));
-
-    console.log('[LEGAL_CONSTR_DDLT] nodes:', JSON.stringify(summary, null, 2));
-    const edgesOfInterest = (layout.edges ?? []).filter((e) =>
-      ['L_I_J_0', 'L_I_K_0', 'L_H_I_0', 'L_K_L_0', 'L_J_E_0'].includes(e.id ?? '')
-    );
-    const polylines = edgesOfInterest.map((e) => ({
-      id: e.id,
-      points: (e as { points?: { x: number; y: number }[] }).points,
-    }));
-
-    console.log('[LEGAL_CONSTR_DDLT] key polylines:', JSON.stringify(polylines, null, 2));
-    expect(true).toBe(true); // diagnostic only
   });
 
   it('Level 1: L_I_K_0 interior vertical has ≥20u clearance from J.left (iter 17 Wybrow nudge)', async () => {
@@ -154,7 +117,9 @@ describe('Swimlanes DDLT — 6-legal-constr-sales.mmd', () => {
     const totalBends = breakdown.edges.reduce((acc, e) => acc + Math.max(0, e.points - 2), 0);
     const avgBendsPerEdge = breakdown.edgeCount > 0 ? totalBends / breakdown.edgeCount : 0;
 
-    console.log('[LEGAL_CONSTR_DDLT] breakdown:', JSON.stringify(breakdown, null, 2));
+    if (DEBUG) {
+      console.log('[LEGAL_CONSTR_DDLT] breakdown:', JSON.stringify(breakdown, null, 2));
+    }
     expect.soft(breakdown.crossings).toBe(0);
     expect.soft(avgBendsPerEdge).toBeLessThan(5);
     expect.soft(totalBends).toBeLessThanOrEqual(40);

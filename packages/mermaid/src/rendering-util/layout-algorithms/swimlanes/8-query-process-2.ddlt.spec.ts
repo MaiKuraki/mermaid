@@ -18,6 +18,7 @@ import { validateLayout } from '../layout-utils/validateLayout.js';
 import { loadDdltFixture } from '../ddlt/loadDdltFixture.js';
 
 const FIXTURE_ID = 'swimlanes/8-query-process-2';
+const DEBUG = process.env.SWIMLANE_DDLT_DEBUG === '1';
 
 function dedupeConsecutive(pts: { x: number; y: number }[]): { x: number; y: number }[] {
   const EPS = 1e-6;
@@ -235,7 +236,9 @@ describe('Swimlanes DDLT — 8-query-process-2.mmd', () => {
     const totalBends = breakdown.edges.reduce((acc, e) => acc + Math.max(0, e.points - 2), 0);
     const avgBendsPerEdge = breakdown.edgeCount > 0 ? totalBends / breakdown.edgeCount : 0;
 
-    console.log('[8_QUERY_PROCESS_2_DDLT] breakdown:', JSON.stringify(breakdown, null, 2));
+    if (DEBUG) {
+      console.log('[8_QUERY_PROCESS_2_DDLT] breakdown:', JSON.stringify(breakdown, null, 2));
+    }
     expect.soft(breakdown.crossings).toBeLessThanOrEqual(1);
     expect.soft(avgBendsPerEdge).toBeLessThan(5);
     expect.soft(totalBends).toBeLessThanOrEqual(30);

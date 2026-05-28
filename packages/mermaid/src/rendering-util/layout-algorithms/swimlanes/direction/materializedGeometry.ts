@@ -1,25 +1,124 @@
 // cspell:ignore Wybrow
 
+const EPS_LOCAL = 1e-3;
+const MIN_SHARED = 8;
+
+interface PointLite {
+  x: number;
+  y: number;
+}
+
+interface RectLite {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+interface SegmentLite {
+  a: PointLite;
+  b: PointLite;
+  horizontal: boolean;
+  vertical: boolean;
+}
+
+const rectOfNode = (node: any): RectLite | undefined => {
+  const cx = (node as { x?: number }).x ?? 0;
+  const cy = (node as { y?: number }).y ?? 0;
+  const w = (node as { width?: number }).width ?? 0;
+  const h = (node as { height?: number }).height ?? 0;
+  if (w <= 0 || h <= 0) {
+    return undefined;
+  }
+  return { left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2 };
+};
+
+const dedupePoints = (points: PointLite[]): PointLite[] => {
+  const result: PointLite[] = [];
+  for (const point of points) {
+    const last = result.length > 0 ? result[result.length - 1] : undefined;
+    if (!last || Math.abs(point.x - last.x) > EPS_LOCAL || Math.abs(point.y - last.y) > EPS_LOCAL) {
+      result.push({ x: point.x, y: point.y });
+    }
+  }
+  return result;
+};
+
+const isHorizontal = (a: PointLite, b: PointLite): boolean =>
+  Math.abs(a.y - b.y) < EPS_LOCAL && Math.abs(a.x - b.x) > EPS_LOCAL;
+
+const isVertical = (a: PointLite, b: PointLite): boolean =>
+  Math.abs(a.x - b.x) < EPS_LOCAL && Math.abs(a.y - b.y) > EPS_LOCAL;
+
+const overlapLength = (a1: number, a2: number, b1: number, b2: number): number =>
+  Math.max(
+    0,
+    Math.min(Math.max(a1, a2), Math.max(b1, b2)) - Math.max(Math.min(a1, a2), Math.min(b1, b2))
+  );
+
+const sameAxisOverlap = (a: SegmentLite, b: SegmentLite): number => {
+  if (a.horizontal && b.horizontal && Math.abs(a.a.y - b.a.y) < 0.5) {
+    return overlapLength(a.a.x, a.b.x, b.a.x, b.b.x);
+  }
+  if (a.vertical && b.vertical && Math.abs(a.a.x - b.a.x) < 0.5) {
+    return overlapLength(a.a.y, a.b.y, b.a.y, b.b.y);
+  }
+  return 0;
+};
+
+const segmentHitsRect = (segment: SegmentLite, rect: RectLite, buffer: number): boolean => {
+  const minX = Math.min(segment.a.x, segment.b.x);
+  const maxX = Math.max(segment.a.x, segment.b.x);
+  const minY = Math.min(segment.a.y, segment.b.y);
+  const maxY = Math.max(segment.a.y, segment.b.y);
+  return (
+    maxX > rect.left - buffer &&
+    minX < rect.right + buffer &&
+    maxY > rect.top - buffer &&
+    minY < rect.bottom + buffer
+  );
+};
+
+const segmentsCrossStrict = (a: SegmentLite, b: SegmentLite): boolean => {
+  if (!((a.horizontal && b.vertical) || (a.vertical && b.horizontal))) {
+    return false;
+  }
+  const h = a.horizontal ? a : b;
+  const v = a.vertical ? a : b;
+  const hY = h.a.y;
+  const hXMin = Math.min(h.a.x, h.b.x);
+  const hXMax = Math.max(h.a.x, h.b.x);
+  const vX = v.a.x;
+  const vYMin = Math.min(v.a.y, v.b.y);
+  const vYMax = Math.max(v.a.y, v.b.y);
+  return (
+    vX > hXMin + EPS_LOCAL &&
+    vX < hXMax - EPS_LOCAL &&
+    hY > vYMin + EPS_LOCAL &&
+    hY < vYMax - EPS_LOCAL
+  );
+};
+
+const segmentsFor = (points: PointLite[]): SegmentLite[] => {
+  const result: SegmentLite[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const horizontal = isHorizontal(a, b);
+    const vertical = isVertical(a, b);
+    if (horizontal || vertical) {
+      result.push({ a, b, horizontal, vertical });
+    }
+  }
+  return result;
+};
+
 export function separateSharedRenderedTerminalLanes(
   edges: any[],
   nodeByIdMap: Map<string, any>
 ): void {
-  const EPS_LOCAL = 1e-3;
-  const MIN_SHARED = 8;
   const MIN_FACE_CLEARANCE = 16;
   const TRACK_SHIFT = 7;
-
-  interface PointLite {
-    x: number;
-    y: number;
-  }
-
-  interface RectLite {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  }
 
   interface TerminalLane {
     edge: any;
@@ -34,32 +133,6 @@ export function separateSharedRenderedTerminalLanes(
     railEnd: PointLite;
     rect: RectLite;
   }
-
-  const rectOfNode = (node: any): RectLite | undefined => {
-    const cx = (node as { x?: number }).x ?? 0;
-    const cy = (node as { y?: number }).y ?? 0;
-    const w = (node as { width?: number }).width ?? 0;
-    const h = (node as { height?: number }).height ?? 0;
-    if (w <= 0 || h <= 0) {
-      return undefined;
-    }
-    return { left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2 };
-  };
-
-  const dedupe = (points: PointLite[]): PointLite[] => {
-    const result: PointLite[] = [];
-    for (const point of points) {
-      const last = result.length > 0 ? result[result.length - 1] : undefined;
-      if (
-        !last ||
-        Math.abs(point.x - last.x) > EPS_LOCAL ||
-        Math.abs(point.y - last.y) > EPS_LOCAL
-      ) {
-        result.push({ x: point.x, y: point.y });
-      }
-    }
-    return result;
-  };
 
   const rectIntersect = (node: any, point: PointLite): PointLite => {
     const x = (node as { x?: number }).x ?? 0;
@@ -83,7 +156,7 @@ export function separateSharedRenderedTerminalLanes(
   };
 
   const terminalLaneFor = (edge: any, atStart: boolean): TerminalLane | undefined => {
-    const points = dedupe((edge as { points?: PointLite[] }).points ?? []);
+    const points = dedupePoints((edge as { points?: PointLite[] }).points ?? []);
     if (points.length < 2) {
       return undefined;
     }
@@ -181,8 +254,7 @@ export function separateSharedRenderedTerminalLanes(
     if (shared < MIN_SHARED) {
       return false;
     }
-    const faceSpan =
-      a.orientation === 'H' ? a.rect.bottom - a.rect.top : a.rect.right - a.rect.left;
+    const faceSpan = a.rect.bottom - a.rect.top;
     if (shared < faceSpan || shared > 2 * faceSpan) {
       return false;
     }
@@ -197,7 +269,7 @@ export function separateSharedRenderedTerminalLanes(
     exactTerminalLaneConflict(a, b) || nearTerminalLaneConflict(a, b);
 
   const shiftedCandidate = (lane: TerminalLane, shift: number): PointLite[] | undefined => {
-    const points = dedupe((lane.edge as { points?: PointLite[] }).points ?? []);
+    const points = dedupePoints((lane.edge as { points?: PointLite[] }).points ?? []);
     if (points.length < 2) {
       return undefined;
     }
@@ -340,30 +412,8 @@ export function collapseRedundantRectangularDoglegs(
   edges: any[],
   nodeByIdMap: Map<string, any>
 ): void {
-  const EPS_LOCAL = 1e-3;
-  const MIN_SHARED = 8;
   const BUFFER = 2;
   const MAX_ITERATIONS = 8;
-
-  interface PointLite {
-    x: number;
-    y: number;
-  }
-
-  interface RectLite {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  }
-
-  interface SegmentLite {
-    edge: any;
-    a: PointLite;
-    b: PointLite;
-    horizontal: boolean;
-    vertical: boolean;
-  }
 
   const realNodeRects: { id: string; rect: RectLite }[] = [];
   const labelRects: { id: string; rect: RectLite }[] = [];
@@ -371,14 +421,10 @@ export function collapseRedundantRectangularDoglegs(
     if ((n as { isGroup?: boolean }).isGroup) {
       continue;
     }
-    const cx = (n as { x?: number }).x ?? 0;
-    const cy = (n as { y?: number }).y ?? 0;
-    const w = (n as { width?: number }).width ?? 0;
-    const h = (n as { height?: number }).height ?? 0;
-    if (w <= 0 || h <= 0) {
+    const rect = rectOfNode(n);
+    if (!rect) {
       continue;
     }
-    const rect = { left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2 };
     const id = String((n as { id?: string }).id ?? '');
     if ((n as { isEdgeLabel?: boolean }).isEdgeLabel) {
       labelRects.push({ id, rect });
@@ -387,104 +433,10 @@ export function collapseRedundantRectangularDoglegs(
     }
   }
 
-  const dedupe = (points: PointLite[]): PointLite[] => {
-    const result: PointLite[] = [];
-    for (const point of points) {
-      const last = result.length > 0 ? result[result.length - 1] : undefined;
-      if (
-        !last ||
-        Math.abs(point.x - last.x) > EPS_LOCAL ||
-        Math.abs(point.y - last.y) > EPS_LOCAL
-      ) {
-        result.push({ x: point.x, y: point.y });
-      }
-    }
-    return result;
-  };
-
-  const isHorizontal = (a: PointLite, b: PointLite): boolean =>
-    Math.abs(a.y - b.y) < EPS_LOCAL && Math.abs(a.x - b.x) > EPS_LOCAL;
-
-  const isVertical = (a: PointLite, b: PointLite): boolean =>
-    Math.abs(a.x - b.x) < EPS_LOCAL && Math.abs(a.y - b.y) > EPS_LOCAL;
-
-  const overlapLength = (a1: number, a2: number, b1: number, b2: number): number =>
-    Math.max(
-      0,
-      Math.min(Math.max(a1, a2), Math.max(b1, b2)) - Math.max(Math.min(a1, a2), Math.min(b1, b2))
-    );
-
-  const sameAxisOverlap = (a: SegmentLite, b: SegmentLite): number => {
-    if (a.horizontal && b.horizontal && Math.abs(a.a.y - b.a.y) < 0.5) {
-      return overlapLength(a.a.x, a.b.x, b.a.x, b.b.x);
-    }
-    if (a.vertical && b.vertical && Math.abs(a.a.x - b.a.x) < 0.5) {
-      return overlapLength(a.a.y, a.b.y, b.a.y, b.b.y);
-    }
-    return 0;
-  };
-
-  const segmentHitsRect = (a: PointLite, b: PointLite, r: RectLite, buffer: number): boolean => {
-    const segMinX = Math.min(a.x, b.x);
-    const segMaxX = Math.max(a.x, b.x);
-    const segMinY = Math.min(a.y, b.y);
-    const segMaxY = Math.max(a.y, b.y);
-    return (
-      segMaxX > r.left - buffer &&
-      segMinX < r.right + buffer &&
-      segMaxY > r.top - buffer &&
-      segMinY < r.bottom + buffer
-    );
-  };
-
-  const segmentsCrossStrict = (
-    a1: PointLite,
-    a2: PointLite,
-    b1: PointLite,
-    b2: PointLite
-  ): boolean => {
-    const aHoriz = isHorizontal(a1, a2);
-    const aVert = isVertical(a1, a2);
-    const bHoriz = isHorizontal(b1, b2);
-    const bVert = isVertical(b1, b2);
-    if (!((aHoriz && bVert) || (aVert && bHoriz))) {
-      return false;
-    }
-    const h = aHoriz ? { a: a1, b: a2 } : { a: b1, b: b2 };
-    const v = aHoriz ? { a: b1, b: b2 } : { a: a1, b: a2 };
-    const hY = h.a.y;
-    const hXMin = Math.min(h.a.x, h.b.x);
-    const hXMax = Math.max(h.a.x, h.b.x);
-    const vX = v.a.x;
-    const vYMin = Math.min(v.a.y, v.b.y);
-    const vYMax = Math.max(v.a.y, v.b.y);
-    return (
-      vX > hXMin + EPS_LOCAL &&
-      vX < hXMax - EPS_LOCAL &&
-      hY > vYMin + EPS_LOCAL &&
-      hY < vYMax - EPS_LOCAL
-    );
-  };
-
-  const segmentsFor = (edge: any, points: PointLite[]): SegmentLite[] => {
-    const result: SegmentLite[] = [];
-    for (let i = 0; i < points.length - 1; i++) {
-      const a = points[i];
-      const b = points[i + 1];
-      const horizontal = isHorizontal(a, b);
-      const vertical = isVertical(a, b);
-      if (!horizontal && !vertical) {
-        continue;
-      }
-      result.push({ edge, a, b, horizontal, vertical });
-    }
-    return result;
-  };
-
   const candidateIsSafe = (edge: any, candidate: PointLite[]): boolean => {
     const sourceId = (edge as { start?: string }).start;
     const targetId = (edge as { end?: string }).end;
-    const candidateSegments = segmentsFor(edge, candidate);
+    const candidateSegments = segmentsFor(candidate);
     if (candidateSegments.length !== candidate.length - 1) {
       return false;
     }
@@ -494,12 +446,12 @@ export function collapseRedundantRectangularDoglegs(
         if (nodeRect.id === sourceId || nodeRect.id === targetId) {
           continue;
         }
-        if (segmentHitsRect(segment.a, segment.b, nodeRect.rect, BUFFER)) {
+        if (segmentHitsRect(segment, nodeRect.rect, BUFFER)) {
           return false;
         }
       }
       for (const labelRect of labelRects) {
-        if (segmentHitsRect(segment.a, segment.b, labelRect.rect, BUFFER)) {
+        if (segmentHitsRect(segment, labelRect.rect, BUFFER)) {
           return false;
         }
       }
@@ -514,18 +466,11 @@ export function collapseRedundantRectangularDoglegs(
         continue;
       }
       for (const candidateSegment of candidateSegments) {
-        for (const otherSegment of segmentsFor(other, dedupe(otherPoints))) {
+        for (const otherSegment of segmentsFor(dedupePoints(otherPoints))) {
           if (sameAxisOverlap(candidateSegment, otherSegment) >= MIN_SHARED) {
             return false;
           }
-          if (
-            segmentsCrossStrict(
-              candidateSegment.a,
-              candidateSegment.b,
-              otherSegment.a,
-              otherSegment.b
-            )
-          ) {
+          if (segmentsCrossStrict(candidateSegment, otherSegment)) {
             return false;
           }
         }
@@ -566,7 +511,7 @@ export function collapseRedundantRectangularDoglegs(
       (p1.y - p0.y) * (p3.y - p2.y) < 0;
 
     if (terminalVerticalDogleg || terminalHorizontalDogleg) {
-      return dedupe([...points.slice(0, i + 1), p4, ...points.slice(i + 5)]);
+      return dedupePoints([...points.slice(0, i + 1), p4, ...points.slice(i + 5)]);
     }
 
     if (i + 5 >= points.length) {
@@ -600,7 +545,7 @@ export function collapseRedundantRectangularDoglegs(
       return undefined;
     }
 
-    return dedupe([...points.slice(0, i + 1), p5, ...points.slice(i + 6)]);
+    return dedupePoints([...points.slice(0, i + 1), p5, ...points.slice(i + 6)]);
   };
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
@@ -609,7 +554,7 @@ export function collapseRedundantRectangularDoglegs(
       if ((edge as { isLayoutOnly?: boolean }).isLayoutOnly) {
         continue;
       }
-      const points = dedupe((edge as { points?: PointLite[] }).points ?? []);
+      const points = dedupePoints((edge as { points?: PointLite[] }).points ?? []);
       for (let i = 0; i <= points.length - 5; i++) {
         const candidate = withoutDogleg(points, i);
         if (!candidate || !candidateIsSafe(edge, candidate)) {
@@ -633,37 +578,16 @@ export function resolveRenderedOrthogonalCrossings(
   edges: any[],
   nodeByIdMap: Map<string, any>
 ): void {
-  const EPS_LOCAL = 1e-3;
   const ANCHOR = 20;
-  const MIN_SHARED = 8;
   const MAX_ITERATIONS = 4;
 
   type Side = 'top' | 'bottom' | 'left' | 'right';
-
-  interface PointLite {
-    x: number;
-    y: number;
-  }
-
-  interface RectLite {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  }
 
   interface NodeInfo {
     id: string;
     cx: number;
     cy: number;
     rect: RectLite;
-  }
-
-  interface SegmentLite {
-    a: PointLite;
-    b: PointLite;
-    horizontal: boolean;
-    vertical: boolean;
   }
 
   const realNodes: NodeInfo[] = [];
@@ -676,21 +600,15 @@ export function resolveRenderedOrthogonalCrossings(
     }
     const cx = (node as { x?: number }).x ?? 0;
     const cy = (node as { y?: number }).y ?? 0;
-    const width = (node as { width?: number }).width ?? 0;
-    const height = (node as { height?: number }).height ?? 0;
-    if (width <= 0 || height <= 0) {
+    const rect = rectOfNode(node);
+    if (!rect) {
       continue;
     }
     realNodes.push({
       id: String((node as { id?: string }).id ?? ''),
       cx,
       cy,
-      rect: {
-        left: cx - width / 2,
-        right: cx + width / 2,
-        top: cy - height / 2,
-        bottom: cy + height / 2,
-      },
+      rect,
     });
   }
 
@@ -707,82 +625,11 @@ export function resolveRenderedOrthogonalCrossings(
     right: Math.max(...realNodes.map((node) => node.rect.right)) + ANCHOR,
   };
 
-  const dedupe = (points: PointLite[]): PointLite[] => {
-    const result: PointLite[] = [];
-    for (const point of points) {
-      const last = result.length > 0 ? result[result.length - 1] : undefined;
-      if (
-        !last ||
-        Math.abs(point.x - last.x) > EPS_LOCAL ||
-        Math.abs(point.y - last.y) > EPS_LOCAL
-      ) {
-        result.push({ x: point.x, y: point.y });
-      }
-    }
-    return result;
-  };
-
-  const isHorizontal = (a: PointLite, b: PointLite): boolean =>
-    Math.abs(a.y - b.y) < EPS_LOCAL && Math.abs(a.x - b.x) > EPS_LOCAL;
-
-  const isVertical = (a: PointLite, b: PointLite): boolean =>
-    Math.abs(a.x - b.x) < EPS_LOCAL && Math.abs(a.y - b.y) > EPS_LOCAL;
-
-  const segmentsFor = (points: PointLite[]): SegmentLite[] => {
-    const result: SegmentLite[] = [];
-    for (let i = 0; i < points.length - 1; i++) {
-      const a = points[i];
-      const b = points[i + 1];
-      const horizontal = isHorizontal(a, b);
-      const vertical = isVertical(a, b);
-      if (horizontal || vertical) {
-        result.push({ a, b, horizontal, vertical });
-      }
-    }
-    return result;
-  };
-
-  const segmentsCrossStrict = (a: SegmentLite, b: SegmentLite): boolean => {
-    if (!((a.horizontal && b.vertical) || (a.vertical && b.horizontal))) {
-      return false;
-    }
-    const h = a.horizontal ? a : b;
-    const v = a.vertical ? a : b;
-    const hY = h.a.y;
-    const hMin = Math.min(h.a.x, h.b.x);
-    const hMax = Math.max(h.a.x, h.b.x);
-    const vX = v.a.x;
-    const vMin = Math.min(v.a.y, v.b.y);
-    const vMax = Math.max(v.a.y, v.b.y);
-    return (
-      vX > hMin + EPS_LOCAL &&
-      vX < hMax - EPS_LOCAL &&
-      hY > vMin + EPS_LOCAL &&
-      hY < vMax - EPS_LOCAL
-    );
-  };
-
-  const overlapLength = (a1: number, a2: number, b1: number, b2: number): number =>
-    Math.max(
-      0,
-      Math.min(Math.max(a1, a2), Math.max(b1, b2)) - Math.max(Math.min(a1, a2), Math.min(b1, b2))
-    );
-
-  const sameAxisOverlap = (a: SegmentLite, b: SegmentLite): number => {
-    if (a.horizontal && b.horizontal && Math.abs(a.a.y - b.a.y) < 0.5) {
-      return overlapLength(a.a.x, a.b.x, b.a.x, b.b.x);
-    }
-    if (a.vertical && b.vertical && Math.abs(a.a.x - b.a.x) < 0.5) {
-      return overlapLength(a.a.y, a.b.y, b.a.y, b.b.y);
-    }
-    return 0;
-  };
-
   const visibleEdges = (): any[] =>
     edges.filter((edge) => !(edge as { isLayoutOnly?: boolean }).isLayoutOnly);
 
   const pointsFor = (edge: any, replacementEdge?: any, replacement?: PointLite[]): PointLite[] =>
-    dedupe(
+    dedupePoints(
       edge === replacementEdge
         ? (replacement ?? [])
         : ((edge as { points?: PointLite[] }).points ?? [])
@@ -836,7 +683,7 @@ export function resolveRenderedOrthogonalCrossings(
     );
   };
 
-  const pathHitsNode = (edge: any, path: PointLite[]): boolean => {
+  const pathHitsNode = (path: PointLite[]): boolean => {
     for (const segment of segmentsFor(path)) {
       for (const node of realNodes) {
         if (segmentHitsRectInterior(segment, node.rect)) {
@@ -937,7 +784,7 @@ export function resolveRenderedOrthogonalCrossings(
 
     const seen = new Set<string>();
     return candidates
-      .map((candidate) => dedupe(candidate))
+      .map((candidate) => dedupePoints(candidate))
       .filter((candidate) => {
         const key = candidate
           .map((point) => `${point.x.toFixed(3)},${point.y.toFixed(3)}`)
@@ -984,7 +831,7 @@ export function resolveRenderedOrthogonalCrossings(
 
     for (const edge of visibleEdges()) {
       for (const candidate of candidatePathsFor(edge)) {
-        if (pathHitsNode(edge, candidate) || pathHasSegmentConflict(edge, candidate)) {
+        if (pathHitsNode(candidate) || pathHasSegmentConflict(edge, candidate)) {
           continue;
         }
         const candidateCrossings = crossingCount(edge, candidate);

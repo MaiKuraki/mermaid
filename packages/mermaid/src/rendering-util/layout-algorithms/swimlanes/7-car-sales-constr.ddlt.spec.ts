@@ -20,6 +20,7 @@ import { validateLayout } from '../layout-utils/validateLayout.js';
 import { loadDdltFixture } from '../ddlt/loadDdltFixture.js';
 
 const FIXTURE_ID = 'swimlanes/7-car-sales-constr';
+const DEBUG = process.env.SWIMLANE_DDLT_DEBUG === '1';
 
 async function runSwimlanes(): Promise<LayoutData> {
   return await loadDdltFixture(FIXTURE_ID, { backendId: 'swimlanes' });
@@ -89,7 +90,9 @@ describe('Swimlanes DDLT — 7-car-sales-constr.mmd', () => {
     const totalBends = breakdown.edges.reduce((acc, e) => acc + Math.max(0, e.points - 2), 0);
     const avgBendsPerEdge = breakdown.edgeCount > 0 ? totalBends / breakdown.edgeCount : 0;
 
-    console.log('[7_CAR_SALES_CONSTR_DDLT] breakdown:', JSON.stringify(breakdown, null, 2));
+    if (DEBUG) {
+      console.log('[7_CAR_SALES_CONSTR_DDLT] breakdown:', JSON.stringify(breakdown, null, 2));
+    }
     // Soft-assert so all baseline regressions surface in a single run.
     // 7-car currently has 2 crossings — open L2 quality target documented
     // since iter 10. Upper bound is a forward guard; tighten as iterations

@@ -2,6 +2,9 @@ import type { Graph, Layering, OrderedLayers, NodeId, Edge } from './helpers.js'
 import { buildLayerIndex } from './phase0.helpers.js';
 import { ORDERING } from './config.js';
 
+type SweepDirection = 'down' | 'up';
+type OrderingHeuristic = 'median' | 'barycenter';
+
 export interface OrderingOptions {
   sweeps?: number; // default 3
   useTranspose?: boolean; // default true
@@ -14,7 +17,7 @@ export interface OrderingOptions {
  * Edge label nodes use their parentId lane.
  */
 function topLaneOf(id: NodeId, g: Graph): string | null {
-  const node = g.nodeById.get(id) as any;
+  const node = g.nodeById.get(id);
   if (!node) {
     return null;
   }
@@ -22,16 +25,17 @@ function topLaneOf(id: NodeId, g: Graph): string | null {
   if (node.isDummy && !node.isEdgeLabel) {
     return null;
   }
-  let pid: string | undefined = node.parentId;
-  if (!pid) {
+  const parentId = node.parentId;
+  if (!parentId) {
     return null;
   }
-  let parent = g.nodeById.get(pid) as any;
+  let topLaneId = parentId;
+  let parent = g.nodeById.get(parentId);
   while (parent?.parentId) {
-    pid = parent.parentId;
-    parent = g.nodeById.get(pid!) as any;
+    topLaneId = parent.parentId;
+    parent = g.nodeById.get(topLaneId);
   }
-  return pid ?? null;
+  return topLaneId;
 }
 
 /**
@@ -42,9 +46,8 @@ function topLaneOf(id: NodeId, g: Graph): string | null {
 function computeLaneOrder(g: Graph): string[] {
   const allTopLanes: string[] = [];
   for (const n of g.layout.nodes ?? []) {
-    const nn: any = n;
-    if (nn?.isGroup && !nn?.parentId) {
-      allTopLanes.push(nn.id);
+    if (n.isGroup && !n.parentId) {
+      allTopLanes.push(n.id);
     }
   }
   return [...new Set(allTopLanes)].reverse();
@@ -68,6 +71,38 @@ function barycenter(values: number[]): number {
   }
   const s = values.reduce((acc, v) => acc + v, 0);
   return s / values.length;
+}
+
+function neighborPositionsFor(
+  targetNodes: NodeId[],
+  fixedIndex: Map<NodeId, number>,
+  edges: Edge[],
+  direction: SweepDirection
+): Map<NodeId, number[]> {
+  const neighborPositions = new Map<NodeId, number[]>();
+  for (const v of targetNodes) {
+    neighborPositions.set(v, []);
+  }
+  for (const e of edges) {
+    if (direction === 'down') {
+      if (fixedIndex.has(e.src) && neighborPositions.has(e.dst)) {
+        neighborPositions.get(e.dst)!.push(fixedIndex.get(e.src)!);
+      }
+    } else if (fixedIndex.has(e.dst) && neighborPositions.has(e.src)) {
+      neighborPositions.get(e.src)!.push(fixedIndex.get(e.dst)!);
+    }
+  }
+  return neighborPositions;
+}
+
+function currentOrderTieBreak(
+  a: NodeId,
+  b: NodeId,
+  currentLayerIndex: Map<NodeId, number>
+): number {
+  const ia = currentLayerIndex.get(a) ?? 0;
+  const ib = currentLayerIndex.get(b) ?? 0;
+  return ia !== ib ? ia - ib : a.localeCompare(b);
 }
 
 function countCrossingsBetweenAdjacent(upper: NodeId[], lower: NodeId[], edges: Edge[]): number {
@@ -126,47 +161,16 @@ export function totalCrossings(layers: NodeId[][], edges: Edge[]): number {
  */
 function sortByHeuristic(
   nodes: NodeId[],
-  fixedIndex: Map<NodeId, number>,
-  edges: Edge[],
-  direction: 'down' | 'up',
-  heuristic: 'median' | 'barycenter',
-  currentLayerIndex: Map<NodeId, number>,
-  _targetSet: Set<NodeId>
+  neighborPositions: Map<NodeId, number[]>,
+  heuristic: OrderingHeuristic,
+  currentLayerIndex: Map<NodeId, number>
 ): NodeId[] {
-  const neighborPositions = new Map<NodeId, number[]>();
-  for (const v of nodes) {
-    neighborPositions.set(v, []);
-  }
-  for (const e of edges) {
-    if (direction === 'down') {
-      if (fixedIndex.has(e.src) && neighborPositions.has(e.dst)) {
-        neighborPositions.get(e.dst)!.push(fixedIndex.get(e.src)!);
-      }
-    } else {
-      if (fixedIndex.has(e.dst) && neighborPositions.has(e.src)) {
-        neighborPositions.get(e.src)!.push(fixedIndex.get(e.dst)!);
-      }
-    }
-  }
   const score = (arr: number[]) => (heuristic === 'median' ? median(arr) : barycenter(arr));
   return [...nodes].sort((a, b) => {
-    const sa = score(neighborPositions.get(a)!);
-    const sb = score(neighborPositions.get(b)!);
+    const sa = score(neighborPositions.get(a) ?? []);
+    const sb = score(neighborPositions.get(b) ?? []);
     if (sa === sb) {
-      const ia = currentLayerIndex.get(a) ?? 0;
-      const ib = currentLayerIndex.get(b) ?? 0;
-      if (ia !== ib) {
-        return ia - ib;
-      }
-      return a.localeCompare(b);
-    }
-    if (!isFinite(sa) && !isFinite(sb)) {
-      const ia = currentLayerIndex.get(a) ?? 0;
-      const ib = currentLayerIndex.get(b) ?? 0;
-      if (ia !== ib) {
-        return ia - ib;
-      }
-      return a.localeCompare(b);
+      return currentOrderTieBreak(a, b, currentLayerIndex);
     }
     if (!isFinite(sa)) {
       return 1;
@@ -182,26 +186,18 @@ function reorderLayer(
   fixedLayer: NodeId[],
   targetLayer: NodeId[],
   edges: Edge[],
-  direction: 'down' | 'up',
-  heuristic: 'median' | 'barycenter',
+  direction: SweepDirection,
+  heuristic: OrderingHeuristic,
   g?: Graph,
   laneOrder?: string[]
 ): NodeId[] {
   const fixedIndex = buildLayerIndex(fixedLayer);
   const currIndex = buildLayerIndex(targetLayer);
-  const targetSet = new Set(targetLayer);
+  const neighborPositions = neighborPositionsFor(targetLayer, fixedIndex, edges, direction);
 
   // If no lane info, fall back to flat reorder (original behavior)
   if (!g || !laneOrder || laneOrder.length === 0) {
-    return sortByHeuristic(
-      targetLayer,
-      fixedIndex,
-      edges,
-      direction,
-      heuristic,
-      currIndex,
-      targetSet
-    );
+    return sortByHeuristic(targetLayer, neighborPositions, heuristic, currIndex);
   }
 
   // Partition target layer nodes by lane
@@ -222,15 +218,7 @@ function reorderLayer(
     if (!nodesInLane || nodesInLane.length === 0) {
       continue;
     }
-    const sorted = sortByHeuristic(
-      nodesInLane,
-      fixedIndex,
-      edges,
-      direction,
-      heuristic,
-      currIndex,
-      targetSet
-    );
+    const sorted = sortByHeuristic(nodesInLane, neighborPositions, heuristic, currIndex);
     result.push(...sorted);
   }
 
@@ -240,32 +228,13 @@ function reorderLayer(
   const nullNodes = byLane.get(null);
   if (nullNodes && nullNodes.length > 0) {
     // Sort null-lane nodes by their barycenter across the full layer
-    const sorted = sortByHeuristic(
-      nullNodes,
-      fixedIndex,
-      edges,
-      direction,
-      heuristic,
-      currIndex,
-      targetSet
-    );
+    const sorted = sortByHeuristic(nullNodes, neighborPositions, heuristic, currIndex);
 
     // For each null-lane node, find the best insertion position
     // based on its connections to nodes already in the result
     for (const nid of sorted) {
       // Compute the barycenter position of this node's neighbors in the fixed layer
-      const positions: number[] = [];
-      for (const e of edges) {
-        if (direction === 'down') {
-          if (fixedIndex.has(e.src) && e.dst === nid) {
-            positions.push(fixedIndex.get(e.src)!);
-          }
-        } else {
-          if (fixedIndex.has(e.dst) && e.src === nid) {
-            positions.push(fixedIndex.get(e.dst)!);
-          }
-        }
-      }
+      const positions = neighborPositions.get(nid) ?? [];
       const bc = positions.length > 0 ? barycenter(positions) : Number.POSITIVE_INFINITY;
 
       // Find the best insertion point: scan result and insert where the
@@ -276,18 +245,7 @@ function reorderLayer(
         // nodes already placed. Insert before the first node whose fixed-layer
         // neighbor position is greater than this node's barycenter.
         for (const [i, rid] of result.entries()) {
-          const rPositions: number[] = [];
-          for (const e of edges) {
-            if (direction === 'down') {
-              if (fixedIndex.has(e.src) && e.dst === rid) {
-                rPositions.push(fixedIndex.get(e.src)!);
-              }
-            } else {
-              if (fixedIndex.has(e.dst) && e.src === rid) {
-                rPositions.push(fixedIndex.get(e.dst)!);
-              }
-            }
-          }
+          const rPositions = neighborPositions.get(rid) ?? [];
           const rBc = rPositions.length > 0 ? barycenter(rPositions) : Number.POSITIVE_INFINITY;
           if (bc < rBc) {
             bestIdx = i;

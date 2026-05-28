@@ -3,7 +3,6 @@ import { normalizeGraph } from './phase0.helpers.js';
 import { removeCycles_DFS, removeCycles_BergerShor, removeCycles_Eades } from './phase1.cycles.js';
 // cspell:ignore eades
 
-import { assignLayers_CoffmanGraham } from './phase2.coffmanGraham.js';
 import { assignLayers_Gravity } from './phase2.gravity.js';
 import { assignLayers_LaneAwareCompact } from './phase2.laneAwareCompact.js';
 import { makeProperLayering } from './phase2.dummies.js';
@@ -16,7 +15,6 @@ export interface LayoutOptions {
   // Cycle removal
   cycleHeuristic?: 'dfs' | 'berger-shor' | 'eades';
   // Layering
-  widthBound?: number; // Coffman-Graham width bound if provided
   preferLongEdgesStraight?: boolean;
   compactSingleInput?: boolean; // default true for compact swimlanes
   ignoreCrossLaneEdges?: boolean;
@@ -62,21 +60,18 @@ export function sugiyamaLayout(g: Graph, opts?: LayoutOptions): LayoutResult {
   const gAcyclic = cycleRes.acyclic;
 
   // Phase 2: layering
-  const layering =
-    opts?.widthBound != null
-      ? assignLayers_CoffmanGraham(gAcyclic, opts.widthBound)
-      : opts?.ignoreCrossLaneEdges
-        ? assignLayers_LaneAwareCompact(gAcyclic, {
-            compactSingleInput: opts?.compactSingleInput ?? LAYERING.DEFAULT_COMPACT_SINGLE_INPUT,
-            ignoreCrossLaneEdges: true,
-            direction: opts?.direction,
-          })
-        : assignLayers_Gravity(gAcyclic, {
-            compactSingleInput: opts?.compactSingleInput ?? LAYERING.DEFAULT_COMPACT_SINGLE_INPUT,
-            preferLongEdgesStraight: opts?.preferLongEdgesStraight,
-            ignoreCrossLaneEdges: false,
-            optimizeRanksByCrossings: opts?.optimizeRanksByCrossings,
-          });
+  const layering = opts?.ignoreCrossLaneEdges
+    ? assignLayers_LaneAwareCompact(gAcyclic, {
+        compactSingleInput: opts?.compactSingleInput ?? LAYERING.DEFAULT_COMPACT_SINGLE_INPUT,
+        ignoreCrossLaneEdges: true,
+        direction: opts?.direction,
+      })
+    : assignLayers_Gravity(gAcyclic, {
+        compactSingleInput: opts?.compactSingleInput ?? LAYERING.DEFAULT_COMPACT_SINGLE_INPUT,
+        preferLongEdgesStraight: opts?.preferLongEdgesStraight,
+        ignoreCrossLaneEdges: false,
+        optimizeRanksByCrossings: opts?.optimizeRanksByCrossings,
+      });
   const { layering: properLayering, graphWithDummies } = makeProperLayering(layering, gAcyclic);
   // Phase 3: ordering
   const ordered = orderLayers(properLayering, graphWithDummies, {

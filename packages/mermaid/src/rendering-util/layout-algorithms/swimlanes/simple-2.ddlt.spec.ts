@@ -17,6 +17,7 @@ import { validateLayout } from '../layout-utils/validateLayout.js';
 import { loadDdltFixture } from '../ddlt/loadDdltFixture.js';
 
 const FIXTURE_ID = 'swimlanes/simple-2';
+const DEBUG = process.env.SWIMLANE_DDLT_DEBUG === '1';
 
 async function runSwimlanes(): Promise<LayoutData> {
   return await loadDdltFixture(FIXTURE_ID, { backendId: 'swimlanes' });
@@ -139,7 +140,9 @@ describe('Swimlanes DDLT — simple-2.mmd', () => {
     const totalBends = breakdown.edges.reduce((acc, e) => acc + Math.max(0, e.points - 2), 0);
     const avgBendsPerEdge = breakdown.edgeCount > 0 ? totalBends / breakdown.edgeCount : 0;
 
-    console.log('[SIMPLE_2_DDLT] breakdown:', JSON.stringify(breakdown, null, 2));
+    if (DEBUG) {
+      console.log('[SIMPLE_2_DDLT] breakdown:', JSON.stringify(breakdown, null, 2));
+    }
     expect.soft(breakdown.crossings).toBe(0);
     expect.soft(avgBendsPerEdge).toBeLessThan(5);
     expect.soft(totalBends).toBeLessThanOrEqual(20);

@@ -1,8 +1,7 @@
 // cspell:ignore Hegemann Wybrow
-import { log } from '../../../../logger.js';
 
-const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
 const EPS = 1e-3;
+const MIN_SHARED = 8;
 
 export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
   interface RectLite {
@@ -15,8 +14,6 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
     id: string;
     cx: number;
     cy: number;
-    w: number;
-    h: number;
     rect: RectLite;
   }
 
@@ -40,8 +37,6 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
       id: String((n as { id?: string }).id ?? ''),
       cx,
       cy,
-      w,
-      h,
       rect: { left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2 },
     };
     realNodes.push(info);
@@ -174,20 +169,14 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
     }
 
     // Case D: src vertical, dst horizontal — 1 bend L-shape.
-    if (!srcH && dstH) {
-      const sameDirSrc =
-        (srcSide === 'bottom' && dst.y > src.y) || (srcSide === 'top' && dst.y < src.y);
-      const sameDirDst =
-        (dstSide === 'left' && src.x < dst.x) || (dstSide === 'right' && src.x > dst.x);
-      if (!sameDirSrc || !sameDirDst) {
-        return undefined;
-      }
-      return [src, { x: src.x, y: dst.y }, dst];
+    const sameDirSrc =
+      (srcSide === 'bottom' && dst.y > src.y) || (srcSide === 'top' && dst.y < src.y);
+    const sameDirDst =
+      (dstSide === 'left' && src.x < dst.x) || (dstSide === 'right' && src.x > dst.x);
+    if (!sameDirSrc || !sameDirDst) {
+      return undefined;
     }
-
-    // Unreachable because srcH/dstH combinations are all handled above.
-    /* istanbul ignore next */
-    return undefined;
+    return [src, { x: src.x, y: dst.y }, dst];
   };
 
   const outsideTracks = {
@@ -323,7 +312,6 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
     currentEdge: any,
     includeIncidentEdges = false
   ): number => {
-    const MIN_SHARED = 8;
     let conflicts = 0;
     const currentStart = (currentEdge as { start?: string }).start;
     const currentEnd = (currentEdge as { end?: string }).end;
@@ -503,10 +491,6 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
     let bestCrossingConflicts = currentCrossingConflicts;
     let bestBends = currentBends;
 
-    if (currentBends < BEND_THRESHOLD && currentCrossingConflicts === 0) {
-      continue;
-    }
-
     for (const srcSide of sides) {
       if (faceIsClaimed(srcId, srcSide, edgeId)) {
         continue;
@@ -549,10 +533,6 @@ export function simplifyDetouredEdges(edges: any[], nodes: any[]): void {
     }
 
     if (bestPath) {
-      log.debug(
-        SWIMLANE_DIR_LOG_PREFIX,
-        `simplifyDetouredEdges: rewrote ${edge.id} (${currentBends}→${bestBends} bends)`
-      );
       (edge as { points: { x: number; y: number }[] }).points = bestPath;
       // Refresh face claims for this edge so downstream iterations
       // see the new attach sides. The loop mutates edges in place;

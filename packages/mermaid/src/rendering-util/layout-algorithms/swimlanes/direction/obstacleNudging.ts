@@ -1,7 +1,169 @@
-// cspell:ignore Wybrow Hegemann Gladisch
-import { log } from '../../../../logger.js';
+// cspell:ignore Wybrow Hegemann Gladisch reanchor
+import type { Edge, Node } from '../../../types.js';
 
-const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
+const MIN_CLEARANCE = 20; // Gladisch δ — safety gap
+const EPS = 1e-3;
+const BUFFER = 2;
+
+interface PointLite {
+  x: number;
+  y: number;
+}
+
+interface RectLite {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+interface RectEntry {
+  id: string;
+  rect: RectLite;
+}
+
+function sameX(a: PointLite, b: PointLite): boolean {
+  return Math.abs(a.x - b.x) < EPS;
+}
+
+function sameY(a: PointLite, b: PointLite): boolean {
+  return Math.abs(a.y - b.y) < EPS;
+}
+
+function segmentHitsRect(a: PointLite, b: PointLite, r: RectLite): boolean {
+  const segMinX = Math.min(a.x, b.x);
+  const segMaxX = Math.max(a.x, b.x);
+  const segMinY = Math.min(a.y, b.y);
+  const segMaxY = Math.max(a.y, b.y);
+  return (
+    segMaxX > r.left - BUFFER &&
+    segMinX < r.right + BUFFER &&
+    segMaxY > r.top - BUFFER &&
+    segMinY < r.bottom + BUFFER
+  );
+}
+
+function shiftedSegmentsHitRect(
+  before: PointLite,
+  newA: PointLite,
+  newB: PointLite,
+  after: PointLite,
+  r: RectLite
+): boolean {
+  return (
+    segmentHitsRect(newA, newB, r) ||
+    segmentHitsRect(before, newA, r) ||
+    segmentHitsRect(newB, after, r)
+  );
+}
+
+// Orthogonal segment crossing test (strict interior crossing of one
+// horizontal with one vertical; shared endpoints and collinear
+// overlaps are not considered crossings).
+function segmentsCross(a1: PointLite, a2: PointLite, b1: PointLite, b2: PointLite): boolean {
+  const aHoriz = sameY(a1, a2);
+  const aVert = sameX(a1, a2);
+  const bHoriz = sameY(b1, b2);
+  const bVert = sameX(b1, b2);
+  if ((aHoriz && bVert) || (aVert && bHoriz)) {
+    const hA = aHoriz ? { a: a1, b: a2 } : { a: b1, b: b2 };
+    const vA = aHoriz ? { a: b1, b: b2 } : { a: a1, b: a2 };
+    const hY = hA.a.y;
+    const hXmin = Math.min(hA.a.x, hA.b.x);
+    const hXmax = Math.max(hA.a.x, hA.b.x);
+    const vX = vA.a.x;
+    const vYmin = Math.min(vA.a.y, vA.b.y);
+    const vYmax = Math.max(vA.a.y, vA.b.y);
+    return vX > hXmin + EPS && vX < hXmax - EPS && hY > vYmin + EPS && hY < vYmax - EPS;
+  }
+  return false;
+}
+
+function segmentKey(p: PointLite, q: PointLite): string {
+  return `${p.x.toFixed(3)},${p.y.toFixed(3)}|${q.x.toFixed(3)},${q.y.toFixed(3)}`;
+}
+
+function dedupeConsecutivePoints(points: PointLite[]): PointLite[] {
+  const deduped: PointLite[] = [];
+  for (const p of points) {
+    const last = deduped.length > 0 ? deduped[deduped.length - 1] : undefined;
+    if (!last || Math.abs(p.x - last.x) > EPS || Math.abs(p.y - last.y) > EPS) {
+      deduped.push(p);
+    }
+  }
+  return deduped;
+}
+
+function pointOnSegment(x: number, y: number, p: PointLite, q: PointLite): boolean {
+  if (sameY(p, q) && Math.abs(y - p.y) < EPS) {
+    const xMin = Math.min(p.x, q.x);
+    const xMax = Math.max(p.x, q.x);
+    return x >= xMin - EPS && x <= xMax + EPS;
+  }
+  if (sameX(p, q) && Math.abs(x - p.x) < EPS) {
+    const yMin = Math.min(p.y, q.y);
+    const yMax = Math.max(p.y, q.y);
+    return y >= yMin - EPS && y <= yMax + EPS;
+  }
+  return false;
+}
+
+function pointOnPolyline(points: PointLite[], x: number, y: number): boolean {
+  for (let k = 0; k < points.length - 1; k++) {
+    if (pointOnSegment(x, y, points[k], points[k + 1])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function longestLabelAnchor(
+  points: PointLite[],
+  labelWidth: number,
+  labelHeight: number
+): PointLite | undefined {
+  let best: PointLite | undefined;
+  let bestLen = -1;
+  for (let k = 0; k < points.length - 1; k++) {
+    const p = points[k];
+    const q = points[k + 1];
+    const segLen = Math.hypot(q.x - p.x, q.y - p.y);
+    const fits =
+      (sameY(p, q) && segLen >= labelWidth + 2) || (sameX(p, q) && segLen >= labelHeight + 2);
+    if (fits && segLen > bestLen) {
+      bestLen = segLen;
+      best = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+    }
+  }
+  return best;
+}
+
+function reanchorLabelIfNeeded(
+  edge: Edge,
+  points: PointLite[],
+  nodeByIdMap: Map<string, Node>
+): void {
+  const labelId = edge.labelNodeId;
+  if (!labelId) {
+    return;
+  }
+  const labelNode = nodeByIdMap.get(labelId);
+  if (!labelNode) {
+    return;
+  }
+  const lw = labelNode.width ?? 0;
+  const lh = labelNode.height ?? 0;
+  const lx = labelNode.x ?? 0;
+  const ly = labelNode.y ?? 0;
+  if (lw <= 0 || lh <= 0 || pointOnPolyline(points, lx, ly)) {
+    return;
+  }
+  const anchor = longestLabelAnchor(points, lw, lh);
+  if (anchor) {
+    labelNode.x = anchor.x;
+    labelNode.y = anchor.y;
+  }
+}
 
 /**
  * Iter 17 — Wybrow-style post-route nudge for interior vertical segments
@@ -38,30 +200,19 @@ const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
  * mechanical mirror of this function.
  */
 export function nudgeInteriorVerticalsFromObstacles(
-  edges: any[],
-  nodeByIdMap: Map<string, any>
+  edges: Edge[],
+  nodeByIdMap: Map<string, Node>
 ): void {
-  const MIN_CLEARANCE = 20; // Gladisch δ — safety gap
-  const EPS_LOCAL = 1e-3;
-  const BUFFER = 2;
-
-  interface RectLite {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  }
-
-  const realNodeRects: { id: string; rect: RectLite }[] = [];
-  const labelRects: { id: string; rect: RectLite }[] = [];
+  const realNodeRects: RectEntry[] = [];
+  const labelRects: RectLite[] = [];
   for (const n of nodeByIdMap.values()) {
-    if ((n as { isGroup?: boolean }).isGroup) {
+    if (n.isGroup) {
       continue;
     }
-    const cx = (n as { x?: number }).x ?? 0;
-    const cy = (n as { y?: number }).y ?? 0;
-    const w = (n as { width?: number }).width ?? 0;
-    const h = (n as { height?: number }).height ?? 0;
+    const cx = n.x ?? 0;
+    const cy = n.y ?? 0;
+    const w = n.width ?? 0;
+    const h = n.height ?? 0;
     if (w <= 0 || h <= 0) {
       continue;
     }
@@ -71,88 +222,31 @@ export function nudgeInteriorVerticalsFromObstacles(
       top: cy - h / 2,
       bottom: cy + h / 2,
     };
-    const id = String((n as { id?: string }).id ?? '');
-    if ((n as { isEdgeLabel?: boolean }).isEdgeLabel) {
-      labelRects.push({ id, rect });
+    const id = String(n.id ?? '');
+    if (n.isEdgeLabel) {
+      labelRects.push(rect);
     } else {
       realNodeRects.push({ id, rect });
     }
   }
 
-  const segHitsRect = (
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-    r: RectLite,
-    buffer: number
-  ): boolean => {
-    const segMinX = Math.min(a.x, b.x);
-    const segMaxX = Math.max(a.x, b.x);
-    const segMinY = Math.min(a.y, b.y);
-    const segMaxY = Math.max(a.y, b.y);
-    return (
-      segMaxX > r.left - buffer &&
-      segMinX < r.right + buffer &&
-      segMaxY > r.top - buffer &&
-      segMinY < r.bottom + buffer
-    );
-  };
-
-  // Orthogonal segment crossing test (strict interior crossing of one
-  // horizontal with one vertical; shared endpoints and collinear
-  // overlaps are not considered crossings).
-  const segmentsCross = (
-    a1: { x: number; y: number },
-    a2: { x: number; y: number },
-    b1: { x: number; y: number },
-    b2: { x: number; y: number }
-  ): boolean => {
-    const aHoriz = Math.abs(a1.y - a2.y) < EPS_LOCAL;
-    const aVert = Math.abs(a1.x - a2.x) < EPS_LOCAL;
-    const bHoriz = Math.abs(b1.y - b2.y) < EPS_LOCAL;
-    const bVert = Math.abs(b1.x - b2.x) < EPS_LOCAL;
-    if ((aHoriz && bVert) || (aVert && bHoriz)) {
-      const hA = aHoriz ? { a: a1, b: a2 } : { a: b1, b: b2 };
-      const vA = aHoriz ? { a: b1, b: b2 } : { a: a1, b: a2 };
-      const hY = hA.a.y;
-      const hXmin = Math.min(hA.a.x, hA.b.x);
-      const hXmax = Math.max(hA.a.x, hA.b.x);
-      const vX = vA.a.x;
-      const vYmin = Math.min(vA.a.y, vA.b.y);
-      const vYmax = Math.max(vA.a.y, vA.b.y);
-      return (
-        vX > hXmin + EPS_LOCAL &&
-        vX < hXmax - EPS_LOCAL &&
-        hY > vYmin + EPS_LOCAL &&
-        hY < vYmax - EPS_LOCAL
-      );
-    }
-    return false;
-  };
-
   for (const edge of edges) {
-    if ((edge as { isLayoutOnly?: boolean }).isLayoutOnly) {
+    if (edge.isLayoutOnly) {
       continue;
     }
-    const rawPts = (edge as { points?: { x: number; y: number }[] }).points;
+    const rawPts = edge.points;
     if (!rawPts || rawPts.length < 4) {
       continue;
     }
 
     // Dedupe consecutive equal points so interior indices are accurate.
-    const pts: { x: number; y: number }[] = [];
-    for (const p of rawPts) {
-      const last = pts.length > 0 ? pts[pts.length - 1] : undefined;
-      if (!last || Math.abs(p.x - last.x) > EPS_LOCAL || Math.abs(p.y - last.y) > EPS_LOCAL) {
-        pts.push(p);
-      }
-    }
+    const pts = dedupeConsecutivePoints(rawPts);
     if (pts.length < 4) {
       continue;
     }
 
-    const srcId = (edge as { start?: string }).start;
-    const dstId = (edge as { end?: string }).end;
-    const edgeId = String((edge as { id?: string }).id ?? '');
+    const srcId = edge.start;
+    const dstId = edge.end;
 
     let changed = false;
     let working = [...pts];
@@ -160,15 +254,14 @@ export function nudgeInteriorVerticalsFromObstacles(
     for (let i = 1; i <= working.length - 3; i++) {
       const a = working[i];
       const b = working[i + 1];
-      const isVertical = Math.abs(a.x - b.x) < EPS_LOCAL && Math.abs(a.y - b.y) > EPS_LOCAL;
+      const isVertical = sameX(a, b) && Math.abs(a.y - b.y) > EPS;
       if (!isVertical) {
         continue;
       }
       const before = working[i - 1];
       const after = working[i + 2];
-      const beforeHoriz =
-        Math.abs(before.y - a.y) < EPS_LOCAL && Math.abs(before.x - a.x) > EPS_LOCAL;
-      const afterHoriz = Math.abs(after.y - b.y) < EPS_LOCAL && Math.abs(after.x - b.x) > EPS_LOCAL;
+      const beforeHoriz = sameY(before, a) && Math.abs(before.x - a.x) > EPS;
+      const afterHoriz = sameY(after, b) && Math.abs(after.x - b.x) > EPS;
       if (!beforeHoriz || !afterHoriz) {
         continue;
       }
@@ -188,14 +281,14 @@ export function nudgeInteriorVerticalsFromObstacles(
         }
         const r = rn.rect;
         // y-overlap of obstacle with the segment (strict)
-        if (r.bottom <= segYmin + EPS_LOCAL || r.top >= segYmax - EPS_LOCAL) {
+        if (r.bottom <= segYmin + EPS || r.top >= segYmax - EPS) {
           continue;
         }
-        if (r.right < segX - EPS_LOCAL) {
+        if (r.right < segX - EPS) {
           if (r.right > alleyLeft) {
             alleyLeft = r.right;
           }
-        } else if (r.left > segX + EPS_LOCAL) {
+        } else if (r.left > segX + EPS) {
           if (r.left < alleyRight) {
             alleyRight = r.left;
           }
@@ -241,16 +334,12 @@ export function nudgeInteriorVerticalsFromObstacles(
       }
 
       // No-op guard
-      if (Math.abs(targetX - segX) < EPS_LOCAL) {
+      if (Math.abs(targetX - segX) < EPS) {
         continue;
       }
 
       const newA = { x: targetX, y: a.y };
       const newB = { x: targetX, y: b.y };
-      const newBeforeHorizA = before;
-      const newBeforeHorizB = newA;
-      const newAfterHorizA = newB;
-      const newAfterHorizB = after;
 
       // Gate (c): real-node rect collision for all three affected segments.
       let blocked = false;
@@ -258,11 +347,7 @@ export function nudgeInteriorVerticalsFromObstacles(
         if (rn.id === srcId || rn.id === dstId) {
           continue;
         }
-        if (
-          segHitsRect(newA, newB, rn.rect, BUFFER) ||
-          segHitsRect(newBeforeHorizA, newBeforeHorizB, rn.rect, BUFFER) ||
-          segHitsRect(newAfterHorizA, newAfterHorizB, rn.rect, BUFFER)
-        ) {
+        if (shiftedSegmentsHitRect(before, newA, newB, after, rn.rect)) {
           blocked = true;
           break;
         }
@@ -272,34 +357,32 @@ export function nudgeInteriorVerticalsFromObstacles(
       }
 
       // Gate (d): other-edge crossings. Skip own segments.
-      const ownSegmentKey = (p: { x: number; y: number }, q: { x: number; y: number }) =>
-        `${p.x.toFixed(3)},${p.y.toFixed(3)}|${q.x.toFixed(3)},${q.y.toFixed(3)}`;
       const selfSegments = new Set<string>();
       for (let k = 0; k < working.length - 1; k++) {
-        selfSegments.add(ownSegmentKey(working[k], working[k + 1]));
-        selfSegments.add(ownSegmentKey(working[k + 1], working[k]));
+        selfSegments.add(segmentKey(working[k], working[k + 1]));
+        selfSegments.add(segmentKey(working[k + 1], working[k]));
       }
       for (const other of edges) {
         if (other === edge) {
           continue;
         }
-        if ((other as { isLayoutOnly?: boolean }).isLayoutOnly) {
+        if (other.isLayoutOnly) {
           continue;
         }
-        const oPts = (other as { points?: { x: number; y: number }[] }).points;
+        const oPts = other.points;
         if (!oPts || oPts.length < 2) {
           continue;
         }
         for (let j = 0; j < oPts.length - 1; j++) {
           const p1 = oPts[j];
           const p2 = oPts[j + 1];
-          if (selfSegments.has(ownSegmentKey(p1, p2))) {
+          if (selfSegments.has(segmentKey(p1, p2))) {
             continue;
           }
           if (
             segmentsCross(newA, newB, p1, p2) ||
-            segmentsCross(newBeforeHorizA, newBeforeHorizB, p1, p2) ||
-            segmentsCross(newAfterHorizA, newAfterHorizB, p1, p2)
+            segmentsCross(before, newA, p1, p2) ||
+            segmentsCross(newB, after, p1, p2)
           ) {
             blocked = true;
             break;
@@ -314,12 +397,8 @@ export function nudgeInteriorVerticalsFromObstacles(
       }
 
       // Gate (e): edge-label rect collision.
-      for (const lr of labelRects) {
-        if (
-          segHitsRect(newA, newB, lr.rect, BUFFER) ||
-          segHitsRect(newBeforeHorizA, newBeforeHorizB, lr.rect, BUFFER) ||
-          segHitsRect(newAfterHorizA, newAfterHorizB, lr.rect, BUFFER)
-        ) {
+      for (const r of labelRects) {
+        if (shiftedSegmentsHitRect(before, newA, newB, after, r)) {
           blocked = true;
           break;
         }
@@ -331,10 +410,6 @@ export function nudgeInteriorVerticalsFromObstacles(
       // Apply the shift.
       working = working.map((p, idx) => (idx === i ? newA : idx === i + 1 ? newB : p));
       changed = true;
-      log.debug(
-        SWIMLANE_DIR_LOG_PREFIX,
-        `nudgeInteriorVerticalsFromObstacles: ${edgeId} seg ${i}-${i + 1} x ${segX.toFixed(2)} → ${targetX.toFixed(2)} (alley [${alleyLeft === -Infinity ? '-∞' : alleyLeft.toFixed(2)}, ${alleyRight === Infinity ? '∞' : alleyRight.toFixed(2)}])`
-      );
     }
 
     if (changed) {
@@ -343,69 +418,8 @@ export function nudgeInteriorVerticalsFromObstacles(
       // that was previously centered on it; validateLayout enforces that
       // the polyline passes through the label node. Only re-anchor if
       // necessary (idempotent otherwise).
-      (edge as { points: { x: number; y: number }[] }).points = working;
-      const labelId = (edge as { labelNodeId?: string }).labelNodeId;
-      if (labelId) {
-        const labelNode = nodeByIdMap.get(labelId);
-        if (labelNode) {
-          const lw = (labelNode as { width?: number }).width ?? 0;
-          const lh = (labelNode as { height?: number }).height ?? 0;
-          const lx = (labelNode as { x?: number }).x ?? 0;
-          const ly = (labelNode as { y?: number }).y ?? 0;
-          if (lw > 0 && lh > 0) {
-            // Check whether the current label centre still lies on some
-            // segment of the new polyline (axis-aligned containment).
-            let onPolyline = false;
-            for (let k = 0; k < working.length - 1; k++) {
-              const p = working[k];
-              const q = working[k + 1];
-              const isHoriz = Math.abs(p.y - q.y) < EPS_LOCAL;
-              const isVert = Math.abs(p.x - q.x) < EPS_LOCAL;
-              if (isHoriz && Math.abs(ly - p.y) < EPS_LOCAL) {
-                const xMin = Math.min(p.x, q.x);
-                const xMax = Math.max(p.x, q.x);
-                if (lx >= xMin - EPS_LOCAL && lx <= xMax + EPS_LOCAL) {
-                  onPolyline = true;
-                  break;
-                }
-              } else if (isVert && Math.abs(lx - p.x) < EPS_LOCAL) {
-                const yMin = Math.min(p.y, q.y);
-                const yMax = Math.max(p.y, q.y);
-                if (ly >= yMin - EPS_LOCAL && ly <= yMax + EPS_LOCAL) {
-                  onPolyline = true;
-                  break;
-                }
-              }
-            }
-            if (!onPolyline) {
-              // Re-anchor to the longest axis-aligned segment that fits.
-              let bestMidX: number | undefined;
-              let bestMidY: number | undefined;
-              let bestLen = -1;
-              for (let k = 0; k < working.length - 1; k++) {
-                const p = working[k];
-                const q = working[k + 1];
-                const segLen = Math.hypot(q.x - p.x, q.y - p.y);
-                const isHoriz = Math.abs(p.y - q.y) < EPS_LOCAL;
-                const isVert = Math.abs(p.x - q.x) < EPS_LOCAL;
-                const fits = (isHoriz && segLen >= lw + 2) || (isVert && segLen >= lh + 2);
-                if (!fits) {
-                  continue;
-                }
-                if (segLen > bestLen) {
-                  bestLen = segLen;
-                  bestMidX = (p.x + q.x) / 2;
-                  bestMidY = (p.y + q.y) / 2;
-                }
-              }
-              if (bestMidX !== undefined && bestMidY !== undefined) {
-                (labelNode as { x: number }).x = bestMidX;
-                (labelNode as { y: number }).y = bestMidY;
-              }
-            }
-          }
-        }
-      }
+      edge.points = working;
+      reanchorLabelIfNeeded(edge, working, nodeByIdMap);
     }
   }
 }

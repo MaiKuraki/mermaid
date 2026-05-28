@@ -2,11 +2,8 @@
 
 import type { LayoutData, Node as MermaidNode } from '../../../types.js';
 import { PRECISION } from '../config.js';
-import { log } from '../../../../logger.js';
 
 const EPS = PRECISION.EPSILON;
-const RAYKOV_LOG_PREFIX = '[raykov]';
-const SWIMLANE_DEBUG = '[SWIMLANE_DEBUG]';
 
 // ---------------------------------------------------------------------------
 // Routing Configuration
@@ -27,8 +24,6 @@ interface RaykovRoutingConfig {
   routingMargin: number;
   /** Offset from node boundary to anchor point (default: 20) */
   anchorOffset: number;
-  /** Padding inside lane boundaries for cross-lane routing (default: 20) */
-  lanePadding: number;
   /** Spacing between parallel tracks in the same pipe (default: 10) */
   trackSpacing: number;
 }
@@ -40,7 +35,6 @@ const DEFAULT_ROUTING_CONFIG: RaykovRoutingConfig = {
   verticalPipeMargin: 15,
   routingMargin: 25,
   anchorOffset: 20,
-  lanePadding: 20,
   trackSpacing: 10,
 };
 
@@ -55,19 +49,8 @@ interface Point {
   y: number;
 }
 
-interface Rect {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
-
 interface LaneInfo {
   id: string;
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
 }
 
 type Orientation = 'horizontal' | 'vertical';
@@ -126,11 +109,7 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     id: string;
     start?: string;
     end?: string;
-    type?: string;
-    label?: string;
     points?: Point[];
-    arrowTypeStart?: string;
-    arrowTypeEnd?: string;
     __originalEdge?: (typeof originalEdges)[number];
     [key: string]: unknown;
   }
@@ -158,11 +137,7 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
   // Identify Lanes (Top-level groups)
   const topLevelGroups = nodes.filter((n) => n.isGroup && !n.parentId);
   for (const group of topLevelGroups) {
-    const minX = (group.x ?? 0) - (group.width ?? 0) / 2;
-    const maxX = (group.x ?? 0) + (group.width ?? 0) / 2;
-    const minY = (group.y ?? 0) - (group.height ?? 0) / 2;
-    const maxY = (group.y ?? 0) + (group.height ?? 0) / 2;
-    const lane: LaneInfo = { id: group.id, minX, maxX, minY, maxY };
+    const lane: LaneInfo = { id: group.id };
 
     // Assign this lane to all descendants
     const assignLane = (n: MermaidNode) => {
@@ -178,8 +153,12 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
   // existing polyline segment via `anchorLabelsToPolyline` in direction.ts.
   // Foreign edges never route around labels, so there is no "foreign edge
   // routed around old label position, label later moved" inconsistency.
-  interface ObstacleRect extends Rect {
+  interface ObstacleRect {
     nodeId: string;
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
     // For LR direction, we need to know the "visual" extent after transform
     // TB x becomes LR y, so the visual Y extent should use height, not width
     visualXHalfExtent: number;
@@ -204,11 +183,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
         visualXHalfExtent: isLR ? h / 2 + padding : w / 2 + padding,
       };
     });
-
-  // Debug: log obstacles when RAYKOV_DEBUG is set
-  if (typeof process !== 'undefined' && process?.env?.RAYKOV_DEBUG) {
-    log.info(RAYKOV_LOG_PREFIX, `Created ${obstacles.length} obstacles`);
-  }
 
   // Helper to find or create pipe
   const getOrAddPipe = (
@@ -315,7 +289,7 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
   // Global list of all routed segments for crossing reduction
   const allRoutedSegments: RoutedSegment[] = [];
   const edgeSegmentIndices: number[][] = []; // edgeIndex -> [routedSegmentIndex, ...]
-  // Edges with intra-lane exclusions that produced a straight path should keep their pipe coord
+  // Centered straight-line fast-path edges should keep their pipe coord.
   const straightIntraLaneEdges = new Set<number>();
   const CROSSING_PENALTY = 1000;
 
@@ -411,23 +385,9 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     })
     .map((entry) => entry.idx);
 
-  const orderMessage = `Routing order: ${routingOrder.map((idx) => edges[idx]?.id ?? idx).join(', ')}`;
-  if (typeof process !== 'undefined' && process?.env?.RAYKOV_DEBUG) {
-    log.info(RAYKOV_LOG_PREFIX, orderMessage);
-  } else {
-    log.debug(RAYKOV_LOG_PREFIX, orderMessage);
-  }
-
-  // Helper to check if a segment is blocked by any obstacle
-  // excludeStart and excludeEnd are node IDs to exclude from obstacle checking
-  // excludeSet is an optional set of additional node IDs to exclude
-  const isSegmentBlocked = (
-    p1: Point,
-    p2: Point,
-    excludeStart?: string,
-    excludeEnd?: string,
-    excludeSet?: Set<string>
-  ): boolean => {
+  // Helper to check if a segment is blocked by any obstacle.
+  // excludeStart and excludeEnd are node IDs to exclude from obstacle checking.
+  const isSegmentBlocked = (p1: Point, p2: Point, excludeStart?: string, excludeEnd?: string) => {
     const segMinX = Math.min(p1.x, p2.x);
     const segMaxX = Math.max(p1.x, p2.x);
     const segMinY = Math.min(p1.y, p2.y);
@@ -438,9 +398,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
         return false;
       }
       if (excludeEnd && obs.nodeId === excludeEnd) {
-        return false;
-      }
-      if (excludeSet?.has(obs.nodeId)) {
         return false;
       }
       if (Math.abs(p1.x - p2.x) > EPS) {
@@ -454,11 +411,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
 
     return !!blockingObs;
   };
-
-  // Strategy 1 (late insertion): labels are never obstacles to any edge, so
-  // there is no per-edge exclusion set. This helper is retained as a no-op
-  // stub for downstream call sites that previously consulted it.
-  const buildIntraLaneExclusions = (_edgeIndex: number): Set<string> | undefined => undefined;
 
   // ---- Step 6: Port pre-assignment ----
   // When multiple edges connect to the same side of a node, distribute their
@@ -636,10 +588,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
       sideLoad.set(loadKey(info.srcId, info.srcSide), primaryLoad - 1);
       sideLoad.set(loadKey(info.srcId, secondary), secondaryLoad + 1);
       info.srcSide = secondary;
-      log.debug(
-        SWIMLANE_DEBUG,
-        `Sibling side-split: edge ${info.edgeIdx} src ${info.srcId} moved from primary to ${secondary}`
-      );
     }
   }
 
@@ -691,7 +639,8 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     // much smaller than the bounding box — use a fraction of the side length.
     const isVerticalSide = side === 'left' || side === 'right';
     const sideLength = isVerticalSide ? (node.height ?? 10) : (node.width ?? 10);
-    const isDiamond = (node as any).shape === 'question' || (node as any).shape === 'diamond';
+    const shape = (node as { shape?: string }).shape;
+    const isDiamond = shape === 'question' || shape === 'diamond';
     const effectiveLength = isDiamond ? sideLength * 0.3 : sideLength;
     const MAX_PORT_SPACING = 20; // cap spacing to avoid large detours
 
@@ -708,11 +657,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
       const offsetKey = `${element.edgeIdx}:${role}`;
       portOffsets.set(offsetKey, offset);
     }
-
-    log.debug(
-      SWIMLANE_DEBUG,
-      `Port distribution: ${key} (${group.length} edges, spacing=${spacing.toFixed(1)}, span=${totalSpan.toFixed(1)})`
-    );
   }
 
   // Helper to apply port offset to a base center port
@@ -751,16 +695,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
       continue;
     }
 
-    // Strategy 1: no per-edge obstacle exclusion (labels are never obstacles).
-    const intraLaneExclusions: Set<string> | undefined = buildIntraLaneExclusions(i);
-
-    log.debug(
-      SWIMLANE_DEBUG,
-      `Routing edge ${e.id}: ${e.start} -> ${e.end}`,
-      `src=(${src.x?.toFixed(1)},${src.y?.toFixed(1)}) w=${src.width?.toFixed(1)} h=${src.height?.toFixed(1)}`,
-      `dst=(${dst.x?.toFixed(1)},${dst.y?.toFixed(1)}) w=${dst.width?.toFixed(1)} h=${dst.height?.toFixed(1)}`
-    );
-
     // 2. Compute Ports. Use the side assignment from Step 6.2 (sibling
     // side-split) so that a reassigned edge exits from its secondary
     // cardinal side instead of `getOrthogonalPort`'s natural choice.
@@ -784,31 +718,8 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
       pDstPort = applyPortOffset(pDstPort, dstSide, dstOffset);
     }
 
-    // Debug: Log computed ports
-    log.debug(
-      SWIMLANE_DEBUG,
-      `  Ports: srcPort=(${pSrcPort.x.toFixed(1)},${pSrcPort.y.toFixed(1)}) dstPort=(${pDstPort.x.toFixed(1)},${pDstPort.y.toFixed(1)})`
-    );
-
     // 3. Compute Anchors
     const ANCHOR_OFFSET = currentConfig.anchorOffset;
-
-    // Log cross-lane info for debugging
-    const srcLane = laneByNodeId.get(src.id);
-    const dstLane = laneByNodeId.get(dst.id);
-    const isCrossLane = srcLane && dstLane && srcLane.id !== dstLane.id;
-
-    if (isCrossLane) {
-      log.debug(
-        RAYKOV_LOG_PREFIX,
-        `Cross-lane edge ${e.start} (${srcLane?.id}) -> ${e.end} (${dstLane?.id})`
-      );
-    } else {
-      log.debug(
-        RAYKOV_LOG_PREFIX,
-        `Intra-lane edge ${e.start} -> ${e.end} (Lanes: ${srcLane?.id} -> ${dstLane?.id})`
-      );
-    }
 
     const pSrcAnchor: Point = { ...pSrcPort };
     const pDstAnchor: Point = { ...pDstPort };
@@ -873,7 +784,7 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     // is not aligned orthogonally, it will produce a diagonal intersection instead of the
     // orthogonal port we computed.
     let srcHandleWaypoints: Point[] = [];
-    const srcExcludeIds = [e.start ?? '', e.end ?? '', ...(intraLaneExclusions ?? [])];
+    const srcExcludeIds = [e.start ?? '', e.end ?? ''];
     const srcCheck = isPointInObstacle(pSrcAnchor, srcExcludeIds);
     // DEBUG: trace the problematic edge
     if (srcCheck.inside && srcCheck.obstacle) {
@@ -915,11 +826,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
           { x: detourX, y: gapY }, // Horizontal detour
           { x: detourX, y: clearanceY }, // Down past obstacle
         ];
-
-        log.debug(
-          RAYKOV_LOG_PREFIX,
-          `Routing srcHandle around ${obs.nodeId}: port -> gap(${gapY}) -> detourX(${detourX}) -> clearanceY(${clearanceY})`
-        );
       } else {
         // Horizontal port (left/right) - route around vertically
         const isRight = pSrcPort.x > (src.x ?? 0);
@@ -951,7 +857,7 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     // Push destination anchor out if it's inside an obstacle
     // Same logic as source: ensure orthogonal waypoints for proper intersection
     let dstHandleWaypoints: Point[] = [];
-    const dstExcludeIds = [e.start ?? '', e.end ?? '', ...(intraLaneExclusions ?? [])];
+    const dstExcludeIds = [e.start ?? '', e.end ?? ''];
     const dstCheck = isPointInObstacle(pDstAnchor, dstExcludeIds);
     if (dstCheck.inside && dstCheck.obstacle) {
       const obs = dstCheck.obstacle;
@@ -977,11 +883,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
           { x: pDstPort.x, y: clearanceY }, // Go sideways to port's X
           // Then orthogonally to port
         ];
-
-        log.debug(
-          RAYKOV_LOG_PREFIX,
-          `Routing dstHandle around ${obs.nodeId}: anchor -> sideways -> up -> port`
-        );
       } else {
         const isRight = pDstPort.x > (dst.x ?? 0);
         const srcY = src.y ?? 0;
@@ -1014,11 +915,8 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     // corresponding vertex side* — the ports already sit at the face
     // centers returned by `portForSide`, so there is nothing to compute.
     //
-    // The existing `sameXIntraLane` shortcut below only triggered when
-    // `intraLaneExclusions !== undefined`, which is dead code under
-    // Strategy 1 (labels never set intra-lane exclusions). This new
-    // generalized path captures the same optimisation for any edge whose
-    // face-center ports are aligned, regardless of label semantics.
+    // This generalized path captures the same optimisation for any edge
+    // whose face-center ports are aligned, regardless of label semantics.
     //
     // Conditions:
     //   1. No obstacle-avoidance waypoints were injected (pSrcAnchor /
@@ -1065,13 +963,7 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
         (portGroups.get(`${e.end ?? ''}:${dstPortSide}:dst`)?.length ?? 0);
       const faceContested = srcFaceTotal > 1 || dstFaceTotal > 1;
       if ((anchorsSameX || anchorsSameY) && !hasPortOffset && !faceContested) {
-        const directBlocked = isSegmentBlocked(
-          pSrcPort,
-          pDstPort,
-          e.start,
-          e.end,
-          intraLaneExclusions
-        );
+        const directBlocked = isSegmentBlocked(pSrcPort, pDstPort, e.start, e.end);
         if (!directBlocked) {
           // Emit the canonical `port → anchor → anchor → port` 4-point
           // shape. Because all four points are collinear along the
@@ -1118,35 +1010,16 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
             from: fastPathFrom,
             to: fastPathTo,
           });
-          log.debug(
-            RAYKOV_LOG_PREFIX,
-            `Centered straight-line fast path for ${e.start}->${e.end}: ` +
-              `port (${pSrcPort.x.toFixed(1)},${pSrcPort.y.toFixed(1)}) -> ` +
-              `(${pDstPort.x.toFixed(1)},${pDstPort.y.toFixed(1)})`
-          );
           continue;
         }
       }
     }
 
-    // Snap anchors to nearest pipe (create lazily)
-    // Shortcut: when source and target are in the same lane at (nearly) the same X,
-    // skip pipe snapping so the route stays perfectly straight vertically.
-    const sameXIntraLane =
-      intraLaneExclusions !== undefined &&
-      Math.abs(pSrcAnchor.x - pDstAnchor.x) < currentConfig.horizontalPipeMargin;
-
-    if (!sameXIntraLane) {
-      const srcPipe = getOrAddPipe('vertical', pSrcAnchor.x, pSrcAnchor.y, pSrcAnchor.y);
-      pSrcAnchor.x = srcPipe.coord;
-      const dstPipe = getOrAddPipe('vertical', pDstAnchor.x, pDstAnchor.y, pDstAnchor.y);
-      pDstAnchor.x = dstPipe.coord;
-    } else {
-      // Use the midpoint so both anchors share the same X
-      const midX = (pSrcAnchor.x + pDstAnchor.x) / 2;
-      pSrcAnchor.x = midX;
-      pDstAnchor.x = midX;
-    }
+    // Snap anchors to nearest pipe (create lazily).
+    const srcPipe = getOrAddPipe('vertical', pSrcAnchor.x, pSrcAnchor.y, pSrcAnchor.y);
+    pSrcAnchor.x = srcPipe.coord;
+    const dstPipe = getOrAddPipe('vertical', pDstAnchor.x, pDstAnchor.y, pDstAnchor.y);
+    pDstAnchor.x = dstPipe.coord;
 
     // 4. Build Visibility Graph & Pathfinding
     // Bounding box - start with anchor points
@@ -1157,10 +1030,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
 
     // Expand bounding box to include detour routes around any obstacles that block the direct path
     for (const obs of obstacles) {
-      // Skip intra-lane intermediates — they shouldn't force detour bbox expansion
-      if (intraLaneExclusions?.has(obs.nodeId)) {
-        continue;
-      }
       // Check if obstacle is in the way (overlaps with the direct path corridor)
       const pathMinX = Math.min(pSrcAnchor.x, pDstAnchor.x);
       const pathMaxX = Math.max(pSrcAnchor.x, pDstAnchor.x);
@@ -1181,10 +1050,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
 
     // Add pipe grid lines around obstacles
     for (const obs of obstacles) {
-      // Skip intra-lane intermediates — no pipes needed around excluded nodes
-      if (intraLaneExclusions?.has(obs.nodeId)) {
-        continue;
-      }
       // Check if obstacle is relevant to this edge's bounding box
       if (obs.maxX < bbMinX || obs.minX > bbMaxX || obs.maxY < bbMinY || obs.minY > bbMaxY) {
         continue;
@@ -1241,7 +1106,7 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
 
     // Helper to check if a segment is blocked for this edge (excluding src/dst)
     const checkSegmentBlocked = (p1: Point, p2: Point): boolean => {
-      return isSegmentBlocked(p1, p2, e.start, e.end, intraLaneExclusions);
+      return isSegmentBlocked(p1, p2, e.start, e.end);
     };
 
     // Try direct L-shaped paths first (much simpler than A*)
@@ -1257,17 +1122,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     const seg2VH_blocked = checkSegmentBlocked(cornerVH, pDstAnchor);
     const pathVH_blocked = seg1VH_blocked || seg2VH_blocked;
 
-    // Debug: Log anchors and L-path check results
-    log.debug(
-      SWIMLANE_DEBUG,
-      `  Anchors: srcAnchor=(${pSrcAnchor.x.toFixed(1)},${pSrcAnchor.y.toFixed(1)}) dstAnchor=(${pDstAnchor.x.toFixed(1)},${pDstAnchor.y.toFixed(1)})`
-    );
-    log.debug(
-      SWIMLANE_DEBUG,
-      `  L-path check: HV=${pathHV_blocked ? 'BLOCKED' : 'ok'}, VH=${pathVH_blocked ? 'BLOCKED' : 'ok'}`
-    );
-
-    // Debug for I->K and I->label specifically
     const isItoLabel = e.start === 'I' && (e.end ?? '').includes('edge-label');
 
     if (!pathHV_blocked) {
@@ -1281,7 +1135,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
       } else {
         foundPath = [pSrcAnchor, cornerHV, pDstAnchor];
       }
-      log.debug(RAYKOV_LOG_PREFIX, `Direct H-V path for ${e.start}->${e.end}`);
     } else if (!pathVH_blocked) {
       // Use vertical-first L-path
       if (Math.abs(pSrcAnchor.x - pDstAnchor.x) < EPS) {
@@ -1289,17 +1142,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
         foundPath = [pSrcAnchor, pDstAnchor];
       } else {
         foundPath = [pSrcAnchor, cornerVH, pDstAnchor];
-      }
-      log.debug(RAYKOV_LOG_PREFIX, `Direct V-H path for ${e.start}->${e.end}`);
-    }
-
-    // Mark straight intra-lane edges: if exclusions are set and path is a straight line,
-    // this edge should keep its pipe coord during track assignment (no spreading)
-    if (intraLaneExclusions && foundPath.length === 2) {
-      const allSameX = Math.abs(foundPath[0].x - foundPath[1].x) < EPS;
-      const allSameY = Math.abs(foundPath[0].y - foundPath[1].y) < EPS;
-      if (allSameX || allSameY) {
-        straightIntraLaneEdges.add(i);
       }
     }
 
@@ -1774,8 +1616,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
   // -----------------------------------------------------------------------
   // Phase 2: Crossing Reduction
   // -----------------------------------------------------------------------
-
-  // Debug: Log all segments before track assignment
 
   const segmentsOverlap = (s1: { from: number; to: number }, s2: { from: number; to: number }) => {
     // Overlap if intervals intersect.
@@ -2619,10 +2459,6 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     }
 
     e.points = filtered;
-
-    // Debug: Log final edge points
-    const pointsStr = filtered.map((p) => `(${p.x.toFixed(1)},${p.y.toFixed(1)})`).join(' -> ');
-    log.debug(SWIMLANE_DEBUG, `Edge ${e.id}: ${e.start} -> ${e.end}, points: ${pointsStr}`);
   }
 
   // Strategy 1: no shadow concatenation / L-bend bridge. Each labelled
