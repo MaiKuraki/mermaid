@@ -2,6 +2,7 @@ import type { LayoutData } from '../../../types.js';
 
 type LayoutNode = NonNullable<LayoutData['nodes']>[number] & { swimlaneContentTop?: number };
 type Direction = 'LR' | 'RL';
+type Axis = 'x' | 'y';
 
 function buildNodeMap(nodes: LayoutNode[]): Map<string, LayoutNode> {
   return new Map(nodes.map((node) => [node.id, node]));
@@ -90,71 +91,50 @@ function recomputeNestedGroupBounds(nodes: LayoutNode[]): void {
   }
 }
 
-function mirrorX(layout: LayoutData): void {
+function mirrorAxis(layout: LayoutData, axis: Axis): boolean {
   const nodes = (layout.nodes ?? []) as LayoutNode[];
   const edges = layout.edges ?? [];
   const contentNodes = nodes.filter((node) => !node.isGroup);
-  let minX = Infinity;
-  let maxX = -Infinity;
+  let min = Infinity;
+  let max = -Infinity;
   for (const node of contentNodes) {
-    const x = node.x;
-    if (typeof x !== 'number') {
+    const value = node[axis];
+    if (typeof value !== 'number') {
       continue;
     }
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
+    min = Math.min(min, value);
+    max = Math.max(max, value);
   }
-  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
-    return;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return false;
   }
-  const mirror = (x: number) => minX + maxX - x;
+  const mirror = (value: number) => min + max - value;
   for (const node of nodes) {
-    if (typeof node.x === 'number') {
-      node.x = mirror(node.x);
+    const value = node[axis];
+    if (typeof value === 'number') {
+      node[axis] = mirror(value);
     }
   }
   for (const edge of edges) {
     for (const point of edge.points ?? []) {
-      point.x = mirror(point.x);
+      point[axis] = mirror(point[axis]);
     }
   }
+  return true;
+}
+
+function mirrorX(layout: LayoutData): void {
+  mirrorAxis(layout, 'x');
 }
 
 export function applyBtDirectionTransform(layout: LayoutData): boolean {
   const nodes = (layout.nodes ?? []) as LayoutNode[];
-  const edges = layout.edges ?? [];
   const contentNodes = nodes.filter((node) => !node.isGroup);
   if (contentNodes.length === 0) {
     return true;
   }
 
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (const node of contentNodes) {
-    const y = node.y;
-    if (typeof y !== 'number') {
-      continue;
-    }
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
-  }
-  if (!Number.isFinite(minY) || !Number.isFinite(maxY)) {
-    return false;
-  }
-
-  const mirror = (y: number) => minY + maxY - y;
-  for (const node of nodes) {
-    if (typeof node.y === 'number') {
-      node.y = mirror(node.y);
-    }
-  }
-  for (const edge of edges) {
-    for (const point of edge.points ?? []) {
-      point.y = mirror(point.y);
-    }
-  }
-
-  return true;
+  return mirrorAxis(layout, 'y');
 }
 
 export function applyLrDirectionTransform(
