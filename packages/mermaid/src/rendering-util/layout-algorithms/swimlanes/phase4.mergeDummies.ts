@@ -30,6 +30,15 @@ interface CorridorLocation {
   key: string;
 }
 
+function getArrayEntry<K, V>(map: Map<K, V[]>, key: K): V[] {
+  let arr = map.get(key);
+  if (!arr) {
+    arr = [];
+    map.set(key, arr);
+  }
+  return arr;
+}
+
 function createNodeAccessors(gWithDummies: Graph, original: Graph) {
   const getNode = (id: NodeId) => original.nodeById.get(id) as any;
   const isDummy = (id: NodeId) => !!(gWithDummies.nodeById.get(id) as any)?.isDummy;
@@ -226,12 +235,7 @@ function createTrackAllocator(
       tracks = new Map<number, Interval[]>();
       reservations.set(key, tracks);
     }
-    let laneIntervals = tracks.get(track);
-    if (!laneIntervals) {
-      laneIntervals = [];
-      tracks.set(track, laneIntervals);
-    }
-    return laneIntervals;
+    return getArrayEntry(tracks, track);
   };
 
   const chooseTrack = (
@@ -261,43 +265,23 @@ function createTrackAllocator(
   const horizKey = (y: number) => y.toFixed(2);
   const vertKey = (x: number) => x.toFixed(2);
 
-  const canReserveHorizontal = (y: number, x1: number, x2: number): boolean => {
-    const key = horizKey(y);
-    const arr = horizRes.get(key);
-    if (!arr) {
-      return true;
-    }
-    return !occupies(arr, x1, x2);
-  };
+  const canReserve = (reservations: Map<string, Interval[]>, key: string, a: number, b: number) =>
+    !reservations.get(key) || !occupies(reservations.get(key)!, a, b);
 
-  const reserveHorizontal = (y: number, x1: number, x2: number) => {
-    const key = horizKey(y);
-    let arr = horizRes.get(key);
-    if (!arr) {
-      arr = [];
-      horizRes.set(key, arr);
-    }
-    reserveInterval(arr, x1, x2);
-  };
+  const reserve = (reservations: Map<string, Interval[]>, key: string, a: number, b: number) =>
+    reserveInterval(getArrayEntry(reservations, key), a, b);
 
-  const canReserveVertical = (x: number, y1: number, y2: number): boolean => {
-    const key = vertKey(x);
-    const arr = vertRes.get(key);
-    if (!arr) {
-      return true;
-    }
-    return !occupies(arr, y1, y2);
-  };
+  const canReserveHorizontal = (y: number, x1: number, x2: number): boolean =>
+    canReserve(horizRes, horizKey(y), x1, x2);
 
-  const reserveVertical = (x: number, y1: number, y2: number) => {
-    const key = vertKey(x);
-    let arr = vertRes.get(key);
-    if (!arr) {
-      arr = [];
-      vertRes.set(key, arr);
-    }
-    reserveInterval(arr, y1, y2);
-  };
+  const reserveHorizontal = (y: number, x1: number, x2: number) =>
+    reserve(horizRes, horizKey(y), x1, x2);
+
+  const canReserveVertical = (x: number, y1: number, y2: number): boolean =>
+    canReserve(vertRes, vertKey(x), y1, y2);
+
+  const reserveVertical = (x: number, y1: number, y2: number) =>
+    reserve(vertRes, vertKey(x), y1, y2);
 
   const boundaryVRes = new Map<string, Map<number, Interval[]>>();
 
@@ -368,11 +352,7 @@ export function mergeDummies(
   const byRef = new Map<string, EdgeRef[]>();
 
   for (const e of gWithDummies.edges) {
-    const rid = e.ref.id;
-    if (!byRef.has(rid)) {
-      byRef.set(rid, []);
-    }
-    byRef.get(rid)!.push(e);
+    getArrayEntry(byRef, e.ref.id).push(e);
   }
 
   const fanoutSide = new Map<NodeId, 'left' | 'right'>();
@@ -383,9 +363,7 @@ export function mergeDummies(
       if (r?.start == null || r.end == null) {
         continue;
       }
-      const arr = perSrc.get(r.start) ?? [];
-      arr.push(r.end);
-      perSrc.set(r.start, arr);
+      getArrayEntry(perSrc, r.start).push(r.end);
     }
     for (const [s, outs] of perSrc) {
       if (outs.length <= 1) {
