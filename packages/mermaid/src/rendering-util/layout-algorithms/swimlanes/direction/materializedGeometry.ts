@@ -1,6 +1,7 @@
 // cspell:ignore Wybrow
 
 import {
+  collectNodeRectEntries,
   dedupeConsecutivePoints,
   isHorizontalSegment,
   isVerticalSegment,
@@ -337,23 +338,9 @@ export function collapseRedundantRectangularDoglegs(
   const BUFFER = 2;
   const MAX_ITERATIONS = 8;
 
-  const realNodeRects: { id: string; rect: RectLite }[] = [];
-  const labelRects: { id: string; rect: RectLite }[] = [];
-  for (const n of nodeByIdMap.values()) {
-    if ((n as { isGroup?: boolean }).isGroup) {
-      continue;
-    }
-    const rect = rectOfNode(n);
-    if (!rect) {
-      continue;
-    }
-    const id = String((n as { id?: string }).id ?? '');
-    if ((n as { isEdgeLabel?: boolean }).isEdgeLabel) {
-      labelRects.push({ id, rect });
-    } else {
-      realNodeRects.push({ id, rect });
-    }
-  }
+  const { realNodeRects, labelNodeRects: labelRects } = collectNodeRectEntries(
+    nodeByIdMap.values()
+  );
 
   const candidateIsSafe = (edge: any, candidate: PointLite[]): boolean => {
     const sourceId = (edge as { start?: string }).start;
