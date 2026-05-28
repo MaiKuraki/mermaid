@@ -199,8 +199,7 @@ function reorderLayer(
     // based on its connections to nodes already in the result
     for (const nid of sorted) {
       // Compute the barycenter position of this node's neighbors in the fixed layer
-      const positions = neighborPositions.get(nid) ?? [];
-      const bc = positions.length > 0 ? barycenter(positions) : Number.POSITIVE_INFINITY;
+      const bc = barycenter(neighborPositions.get(nid) ?? []);
 
       // Find the best insertion point: scan result and insert where the
       // node's barycenter fits relative to its neighbors
@@ -210,8 +209,7 @@ function reorderLayer(
         // nodes already placed. Insert before the first node whose fixed-layer
         // neighbor position is greater than this node's barycenter.
         for (const [i, rid] of result.entries()) {
-          const rPositions = neighborPositions.get(rid) ?? [];
-          const rBc = rPositions.length > 0 ? barycenter(rPositions) : Number.POSITIVE_INFINITY;
+          const rBc = barycenter(neighborPositions.get(rid) ?? []);
           if (bc < rBc) {
             bestIdx = i;
             break;
