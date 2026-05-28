@@ -240,14 +240,14 @@ export function buildOrthogonalPortPath(
       (srcSide === 'right' && dstSide === 'left' && src.x < dst.x) ||
       (srcSide === 'left' && dstSide === 'right' && src.x > dst.x);
     if (opposingDir) {
-      if (Math.abs(src.y - dst.y) < epsilon) {
+      if (sameY(src, dst, epsilon)) {
         return [src, dst];
       }
       const midX = (src.x + dst.x) / 2;
       return [src, { x: midX, y: src.y }, { x: midX, y: dst.y }, dst];
     }
     if (srcSide === dstSide) {
-      if (Math.abs(src.y - dst.y) < epsilon) {
+      if (sameY(src, dst, epsilon)) {
         return undefined;
       }
       const intX =
@@ -259,7 +259,7 @@ export function buildOrthogonalPortPath(
 
   if (!srcH && !dstH) {
     if (srcSide === dstSide) {
-      if (Math.abs(src.x - dst.x) < epsilon) {
+      if (sameX(src, dst, epsilon)) {
         return undefined;
       }
       const intY =
@@ -272,7 +272,7 @@ export function buildOrthogonalPortPath(
     if (!sameDir) {
       return undefined;
     }
-    if (Math.abs(src.x - dst.x) < epsilon) {
+    if (sameX(src, dst, epsilon)) {
       return [src, dst];
     }
     const midY = (src.y + dst.y) / 2;
@@ -407,10 +407,10 @@ export function orthogonalSegmentsCross(
   epsilon = EPS,
   endpointTolerance = 1e-6
 ): boolean {
-  const s1H = Math.abs(a1.y - b1.y) < epsilon;
-  const s1V = Math.abs(a1.x - b1.x) < epsilon;
-  const s2H = Math.abs(a2.y - b2.y) < epsilon;
-  const s2V = Math.abs(a2.x - b2.x) < epsilon;
+  const s1H = sameY(a1, b1, epsilon);
+  const s1V = sameX(a1, b1, epsilon);
+  const s2H = sameY(a2, b2, epsilon);
+  const s2V = sameX(a2, b2, epsilon);
   if ((s1H && s2H) || (s1V && s2V)) {
     return false;
   }
@@ -452,18 +452,10 @@ export function sameAxisSegmentsOverlap(
   const s2H = sameY(a2, b2, epsilon);
   const s2V = sameX(a2, b2, epsilon);
   if (s1V && s2V && sameX(a1, a2, epsilon)) {
-    const m1 = Math.min(a1.y, b1.y);
-    const M1 = Math.max(a1.y, b1.y);
-    const m2 = Math.min(a2.y, b2.y);
-    const M2 = Math.max(a2.y, b2.y);
-    return M1 > m2 + epsilon && M2 > m1 + epsilon;
+    return overlapLength(a1.y, b1.y, a2.y, b2.y) > epsilon;
   }
   if (s1H && s2H && sameY(a1, a2, epsilon)) {
-    const m1 = Math.min(a1.x, b1.x);
-    const M1 = Math.max(a1.x, b1.x);
-    const m2 = Math.min(a2.x, b2.x);
-    const M2 = Math.max(a2.x, b2.x);
-    return M1 > m2 + epsilon && M2 > m1 + epsilon;
+    return overlapLength(a1.x, b1.x, a2.x, b2.x) > epsilon;
   }
   return false;
 }
