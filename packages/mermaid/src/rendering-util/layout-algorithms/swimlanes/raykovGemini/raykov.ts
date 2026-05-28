@@ -1707,6 +1707,36 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     return -1;
   };
 
+  const segmentsConflict = (s1: RoutedSegment, s2: RoutedSegment): boolean => {
+    if (s1.trackIndex === s2.trackIndex) {
+      return segmentsOverlap(s1, s2);
+    }
+
+    const adj1 = getAdjacentSegmentsAlongEdge(s1);
+    const adj2 = getAdjacentSegmentsAlongEdge(s2);
+    return adj1.some((a1) => adj2.some((a2) => haveAnyCrossing(a1, a2)));
+  };
+
+  const resolveTrackConflict = (
+    s1: RoutedSegment,
+    s2: RoutedSegment,
+    move: (seg: RoutedSegment, trackIdx: number) => void
+  ) => {
+    if (
+      trySwapSegmentsAcrossTracks(
+        s1,
+        s2,
+        s1.pipe.tracks[s1.trackIndex],
+        s2.pipe.tracks[s2.trackIndex]
+      )
+    ) {
+      return;
+    }
+
+    const avail = findAvailableTrack(s1.pipe, s2);
+    move(s2, avail !== -1 ? avail : createNewTrack(s1.pipe));
+  };
+
   interface DestInfo {
     dest: number;
     deviation: number;
@@ -1843,46 +1873,9 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
             continue;
           }
 
-          let conflict = false;
-          if (h1.trackIndex === h2.trackIndex) {
-            // Collision on same track?
-            // Since they are handles from same node, they likely overlap if in same pipe
-            const isOverlap = segmentsOverlap(h1, h2);
-            if (isOverlap) {
-              conflict = true;
-            }
-          } else {
-            // Check crossing of adjacent segments
-            const adj1 = getAdjacentSegmentsAlongEdge(h1);
-            const adj2 = getAdjacentSegmentsAlongEdge(h2);
-            for (const a1 of adj1) {
-              for (const a2 of adj2) {
-                if (haveAnyCrossing(a1, a2)) {
-                  conflict = true;
-                }
-              }
-            }
-          }
-
-          if (conflict) {
+          if (segmentsConflict(h1, h2)) {
             crossings++;
-            if (
-              !trySwapSegmentsAcrossTracks(
-                h1,
-                h2,
-                h1.pipe.tracks[h1.trackIndex],
-                h2.pipe.tracks[h2.trackIndex]
-              )
-            ) {
-              const avail = findAvailableTrack(h1.pipe, h2);
-              if (avail !== -1) {
-                moveSegmentChainToTrack(h2, avail);
-              } else {
-                const newTrack = createNewTrack(h1.pipe);
-                moveSegmentChainToTrack(h2, newTrack);
-              }
-            }
-            // else: segments don't overlap — no crossing to fix
+            resolveTrackConflict(h1, h2, moveSegmentChainToTrack);
           }
         }
       }
@@ -2035,40 +2028,9 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
             continue;
           }
 
-          let conflict = false;
-          if (h1.trackIndex === h2.trackIndex) {
-            if (segmentsOverlap(h1, h2)) {
-              conflict = true;
-            }
-          } else {
-            const adj1 = getAdjacentSegmentsAlongEdge(h1);
-            const adj2 = getAdjacentSegmentsAlongEdge(h2);
-            for (const a1 of adj1) {
-              for (const a2 of adj2) {
-                if (haveAnyCrossing(a1, a2)) {
-                  conflict = true;
-                }
-              }
-            }
-          }
-
-          if (conflict) {
+          if (segmentsConflict(h1, h2)) {
             crossings++;
-            if (
-              !trySwapSegmentsAcrossTracks(
-                h1,
-                h2,
-                h1.pipe.tracks[h1.trackIndex],
-                h2.pipe.tracks[h2.trackIndex]
-              )
-            ) {
-              const avail = findAvailableTrack(h1.pipe, h2);
-              if (avail !== -1) {
-                moveSegmentChainToTrack(h2, avail);
-              } else {
-                moveSegmentChainToTrack(h2, createNewTrack(h1.pipe));
-              }
-            }
+            resolveTrackConflict(h1, h2, moveSegmentChainToTrack);
           }
         }
       }
@@ -2102,42 +2064,9 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
           const s1 = pipeSegments[i];
           const s2 = pipeSegments[j];
 
-          let conflict = false;
-          if (s1.trackIndex === s2.trackIndex) {
-            const overlap = segmentsOverlap(s1, s2);
-            if (overlap) {
-              conflict = true;
-            }
-          } else {
-            // Check crossing of ADJACENT segments
-            const adj1 = getAdjacentSegmentsAlongEdge(s1);
-            const adj2 = getAdjacentSegmentsAlongEdge(s2);
-            for (const a1 of adj1) {
-              for (const a2 of adj2) {
-                if (haveAnyCrossing(a1, a2)) {
-                  conflict = true;
-                }
-              }
-            }
-          }
-
-          if (conflict) {
+          if (segmentsConflict(s1, s2)) {
             crossings++;
-            if (
-              !trySwapSegmentsAcrossTracks(
-                s1,
-                s2,
-                pipe.tracks[s1.trackIndex],
-                pipe.tracks[s2.trackIndex]
-              )
-            ) {
-              const avail = findAvailableTrack(pipe, s2);
-              if (avail !== -1) {
-                moveSegmentToTrack(s2, avail);
-              } else {
-                moveSegmentToTrack(s2, createNewTrack(pipe));
-              }
-            }
+            resolveTrackConflict(s1, s2, moveSegmentToTrack);
           }
         }
       }
