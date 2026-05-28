@@ -1,11 +1,8 @@
-import { log } from '../../../logger.js';
 import type { LayoutData } from '../../types.js';
 import { postProcessSwimlaneLayout, validateSwimlanesLayout } from './postProcessing.js';
 import { toGraphView, writeBackToLayoutData } from './helpers.js';
 import { sugiyamaLayout } from './pipeline.js';
 import { routeEdgesOrthogonal as raykovRouting } from './raykovGemini/raykov.js';
-
-const SWIMLANE_DEBUG = '[SWIMLANE_DEBUG]';
 
 export type SwimlaneDirection = 'TB' | 'LR' | 'BT' | 'RL';
 
@@ -49,18 +46,6 @@ export function runSwimlaneLayoutCore(data4Layout: LayoutData): SwimlaneDirectio
   });
   writeBackToLayoutData(g, ordered, coordinates, { nodeGap, layerGap });
 
-  log.debug(SWIMLANE_DEBUG, 'Node positions after Sugiyama layout:');
-  for (const node of data4Layout.nodes ?? []) {
-    if (!node.isGroup) {
-      const isLabelNode = (node as { isEdgeLabel?: boolean }).isEdgeLabel;
-      log.debug(
-        SWIMLANE_DEBUG,
-        `  ${node.id}: x=${node.x?.toFixed(2)}, y=${node.y?.toFixed(2)}, w=${node.width?.toFixed(2)}, h=${node.height?.toFixed(2)}${isLabelNode ? ' [LABEL_NODE]' : ''}, parentId=${node.parentId}`
-      );
-    }
-  }
-
-  log.debug('RAYKOV: Starting routing');
   for (const edge of data4Layout.edges ?? []) {
     delete edge.points;
   }
@@ -72,23 +57,7 @@ export function runSwimlaneLayoutCore(data4Layout: LayoutData): SwimlaneDirectio
     }
   }
 
-  const contentNodes = (data4Layout.nodes ?? []).filter((n) => !n.isGroup);
-  log.debug(`SWIMLANE_SPACING [${direction}] Before direction transform - node positions:`);
-  for (const n of contentNodes) {
-    log.debug(
-      `SWIMLANE_SPACING [${direction}]   ${n.id}: x=${n.x?.toFixed(2)}, y=${n.y?.toFixed(2)}, w=${n.width?.toFixed(2)}, h=${n.height?.toFixed(2)}`
-    );
-  }
-
   postProcessSwimlaneLayout(data4Layout, direction);
-
-  log.debug(`SWIMLANE_SPACING [${direction}] After direction transform - node positions:`);
-  for (const n of contentNodes) {
-    const isLabelNode = (n as { isEdgeLabel?: boolean }).isEdgeLabel;
-    log.debug(
-      `SWIMLANE_SPACING [${direction}]   ${n.id}: x=${n.x?.toFixed(2)}, y=${n.y?.toFixed(2)}, w=${n.width?.toFixed(2)}, h=${n.height?.toFixed(2)}${isLabelNode ? ' [LABEL_NODE]' : ''}`
-    );
-  }
 
   validateSwimlanesLayout(data4Layout);
 

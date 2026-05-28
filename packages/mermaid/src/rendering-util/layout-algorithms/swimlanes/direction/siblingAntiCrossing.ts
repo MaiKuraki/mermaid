@@ -1,6 +1,3 @@
-import { log } from '../../../../logger.js';
-
-const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
 const EPS = 1e-3;
 
 /**
@@ -86,10 +83,6 @@ export function preventSiblingLShapeCrossings(edges: any[]): void {
     b.trackX = aTrack;
     (a.edge as { points: { x: number; y: number }[] }).points = a.pts;
     (b.edge as { points: { x: number; y: number }[] }).points = b.pts;
-    log.debug(
-      SWIMLANE_DIR_LOG_PREFIX,
-      `preventSiblingLShapeCrossings: swapped tracks for ${a.edge.id} (${aTrack}->${bTrack}) and ${b.edge.id} (${bTrack}->${aTrack})`
-    );
   };
 
   for (const group of bySrc.values()) {

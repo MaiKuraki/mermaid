@@ -2,8 +2,6 @@ import type { LayoutData } from '../../../types.js';
 import { log } from '../../../../logger.js';
 import { collectLayoutNodeRects, segmentBoundsOverlapRect } from './geometry.js';
 
-const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
-
 export interface ValidationIssue {
   type: 'edge-node-overlap' | 'edge-edge-crossing';
   edgeId: string;
@@ -165,11 +163,6 @@ export function validateSwimlanesLayout(layout: LayoutData): ValidationIssue[] {
     for (const issue of issues) {
       log.warn(`[SWIMLANE_VALIDATE]   ${issue.type}: ${issue.detail}`);
     }
-  } else {
-    log.debug(
-      SWIMLANE_DIR_LOG_PREFIX,
-      'Validation passed: no edge-node overlaps or edge crossings'
-    );
   }
 
   return issues;

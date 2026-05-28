@@ -18,8 +18,6 @@ import type { LayoutData, Node, Edge, NonClusterNode } from '../../types.js';
 import { log } from '../../../logger.js';
 
 const EDGE_LABEL_LOG_PREFIX = '[EdgeLabelNodes]';
-const SWIMLANE_DEBUG = '[SWIMLANE_DEBUG]';
-
 export interface EdgeLabelTransformResult {
   /** The transformed layout data with label nodes added */
   data: LayoutData;
@@ -115,16 +113,6 @@ export function createEdgeLabelNodes(data: LayoutData): EdgeLabelTransformResult
     edge.label = undefined;
     (edge as Edge & { text?: unknown }).text = undefined;
 
-    log.debug(
-      SWIMLANE_DEBUG,
-      `Label node created: ${labelNodeId}`,
-      `label="${edge.label}"`,
-      `srcLane=${sourceNode.parentId}`,
-      `dstLane=${targetNode.parentId}`,
-      `srcPos=(${sourceNode.x?.toFixed(1)},${sourceNode.y?.toFixed(1)})`,
-      `dstPos=(${targetNode.x?.toFixed(1)},${targetNode.y?.toFixed(1)})`
-    );
-
     // Layout-only virtual edges: Sugiyama uses these to place the label node
     // between source and target. They are not routed or rendered — consumers
     // must skip any edge with `isLayoutOnly: true`.
@@ -148,11 +136,6 @@ export function createEdgeLabelNodes(data: LayoutData): EdgeLabelTransformResult
 
   const newNodes = [...data.nodes, ...nodesToAdd];
   const newEdges = [...data.edges, ...layoutOnlyEdges];
-
-  log.info(
-    EDGE_LABEL_LOG_PREFIX,
-    `Created ${nodesToAdd.length} label nodes (label-as-waypoint) and ${layoutOnlyEdges.length} layout-only virtual edges`
-  );
 
   return {
     data: {

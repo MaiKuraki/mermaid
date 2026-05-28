@@ -1,6 +1,5 @@
 // cspell:ignore raykov Wybrow
 import type { LayoutData } from '../../types.js';
-import { log } from '../../../logger.js';
 import {
   clipEdgeEndpointsToNodeBoundaries,
   prepareEdgeEndpointsForRenderer,
@@ -24,8 +23,6 @@ import { straightenCollinearSiblingDetours } from './direction/siblingSharedFace
 import { nudgeSharedInteriorSubpaths } from './direction/sharedTrackNudging.js';
 export { validateSwimlanesLayout } from './direction/validation.js';
 export type { ValidationIssue } from './direction/validation.js';
-
-const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
 
 /** Applies direction transforms and post-routing cleanup to a swimlane layout. */
 export function postProcessSwimlaneLayout(layout: LayoutData, direction?: string): void {
@@ -122,8 +119,4 @@ export function postProcessSwimlaneLayout(layout: LayoutData, direction?: string
   resolveRenderedOrthogonalCrossings(edges, nodeByIdMap);
 
   prepareEdgeEndpointsForRenderer(edges, nodeByIdMap);
-
-  log.debug(SWIMLANE_DIR_LOG_PREFIX, 'Applied LR direction transform to swimlanes', {
-    contentNodeCount: contentNodes.length,
-  });
 }
