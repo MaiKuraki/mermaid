@@ -158,12 +158,12 @@ export function separateSharedRenderedTerminalLanes(
     if (a.orientation === 'H') {
       const aOnHorizontalFace =
         Math.abs(a.boundary.x - a.rect.left) < 1 || Math.abs(a.boundary.x - a.rect.right) < 1;
-      return aOnHorizontalFace && Math.abs(a.boundary.x - b.boundary.x) < 1;
+      return aOnHorizontalFace && sameX(a.boundary, b.boundary, 1);
     }
 
     const aOnVerticalFace =
       Math.abs(a.boundary.y - a.rect.top) < 1 || Math.abs(a.boundary.y - a.rect.bottom) < 1;
-    return aOnVerticalFace && Math.abs(a.boundary.y - b.boundary.y) < 1;
+    return aOnVerticalFace && sameY(a.boundary, b.boundary, 1);
   };
 
   const exactTerminalLaneConflict = (a: TerminalLane, b: TerminalLane): boolean => {
