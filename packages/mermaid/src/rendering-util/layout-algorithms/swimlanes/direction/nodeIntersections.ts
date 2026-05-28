@@ -1,13 +1,13 @@
 import type { LayoutData } from '../../../types.js';
-import { segmentBoundsOverlapRect, type RectBounds } from './geometry.js';
-
-interface LabelRect extends RectBounds {
-  nodeId: string;
-}
+import {
+  collectLayoutNodeRects,
+  segmentBoundsOverlapRect,
+  type LayoutNodeRect,
+} from './geometry.js';
 
 interface LabelEdgeFixCandidate {
   edge: any;
-  label: LabelRect;
+  label: LayoutNodeRect;
   startIdx: number;
   endIdx: number;
 }
@@ -206,21 +206,7 @@ export function resolveEdgeNodeIntersections(layout: LayoutData): void {
   // Strategy 1: label positions are not decided yet (they are anchored to
   // the routed polyline after this pass), so edge-label nodes are not
   // obstacles here. Only real non-group nodes participate.
-  const nodeRects: LabelRect[] = nodes
-    .filter((n: any) => !n.isGroup && !n.isEdgeLabel)
-    .map((n: any) => {
-      const cx = n.x ?? 0;
-      const cy = n.y ?? 0;
-      const w = n.width ?? 0;
-      const h = n.height ?? 0;
-      return {
-        nodeId: n.id as string,
-        left: cx - w / 2,
-        right: cx + w / 2,
-        top: cy - h / 2,
-        bottom: cy + h / 2,
-      };
-    });
+  const nodeRects = collectLayoutNodeRects(nodes, { includeEdgeLabels: false });
 
   const epsilon = 2;
   const margin = 6;

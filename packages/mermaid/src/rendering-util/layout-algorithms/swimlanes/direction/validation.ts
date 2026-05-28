@@ -1,12 +1,8 @@
 import type { LayoutData } from '../../../types.js';
 import { log } from '../../../../logger.js';
-import { segmentBoundsOverlapRect, type RectBounds } from './geometry.js';
+import { collectLayoutNodeRects, segmentBoundsOverlapRect } from './geometry.js';
 
 const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
-
-interface LabelRect extends RectBounds {
-  nodeId: string;
-}
 
 export interface ValidationIssue {
   type: 'edge-node-overlap' | 'edge-edge-crossing';
@@ -66,21 +62,7 @@ export function validateSwimlanesLayout(layout: LayoutData): ValidationIssue[] {
     return issues;
   }
 
-  const nodeRects: LabelRect[] = nodes
-    .filter((n: any) => !n.isGroup)
-    .map((n: any) => {
-      const cx = n.x ?? 0;
-      const cy = n.y ?? 0;
-      const w = n.width ?? 0;
-      const h = n.height ?? 0;
-      return {
-        nodeId: n.id as string,
-        left: cx - w / 2,
-        right: cx + w / 2,
-        top: cy - h / 2,
-        bottom: cy + h / 2,
-      };
-    });
+  const nodeRects = collectLayoutNodeRects(nodes);
 
   const epsilon = 1; // tighter than the fix pass: catch marginal overlaps
 

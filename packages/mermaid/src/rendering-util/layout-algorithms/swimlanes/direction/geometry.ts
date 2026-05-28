@@ -31,6 +31,10 @@ export interface NodePairGeometry {
   collinearY: boolean;
 }
 
+export interface LayoutNodeRect extends RectBounds {
+  nodeId: string;
+}
+
 export interface ThreeSegmentRoute {
   kind: 'HVH' | 'VHV';
   p0: Point;
@@ -237,6 +241,27 @@ export function collectNodeRectEntries(nodes: Iterable<NodeBoundsInput>): {
     }
   }
   return { realNodeRects, labelNodeRects };
+}
+
+export function collectLayoutNodeRects(
+  nodes: Iterable<NodeBoundsInput>,
+  { includeEdgeLabels = true }: { includeEdgeLabels?: boolean } = {}
+): LayoutNodeRect[] {
+  const result: LayoutNodeRect[] = [];
+  for (const node of nodes) {
+    if (node.isGroup || (!includeEdgeLabels && node.isEdgeLabel)) {
+      continue;
+    }
+    const cx = node.x ?? 0;
+    const cy = node.y ?? 0;
+    const width = node.width ?? 0;
+    const height = node.height ?? 0;
+    result.push({
+      nodeId: node.id!,
+      ...rectFromCenterSize(cx, cy, width, height),
+    });
+  }
+  return result;
 }
 
 export function getNodePairGeometry(
