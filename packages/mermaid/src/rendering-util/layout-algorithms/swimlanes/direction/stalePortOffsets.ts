@@ -1,8 +1,29 @@
 // cspell:ignore Hegemann Wolff raykov
-import { log } from '../../../../logger.js';
+import type { Edge, Node } from '../../../types.js';
 
 const EPS = 1e-3;
-const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
+const JOG_MAX = 20; // matches raykov MAX_PORT_SPACING
+const NODE_BUFFER = 3;
+const LABEL_BUFFER = 3;
+const EDGE_BUFFER = 2;
+
+interface PointLite {
+  x: number;
+  y: number;
+}
+
+interface RectLite {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+interface SegLite {
+  edgeId: string;
+  a: PointLite;
+  b: PointLite;
+}
 
 /**
  * Stale port-offset Z-edge straightener (iter 7).
@@ -25,31 +46,18 @@ const SWIMLANE_DIR_LOG_PREFIX = 'SWIMLANE_DIR';
  * `anchorLabelsToPolyline`). If any safety check fails, the edge is
  * left unchanged.
  */
-export function straightenStalePortOffsets(edges: any[], nodeByIdMap: Map<string, any>): void {
-  const JOG_MAX = 20; // matches raykov MAX_PORT_SPACING
-  const NODE_BUFFER = 3;
-  const LABEL_BUFFER = 3;
-  const EDGE_BUFFER = 2;
-
-  interface RectLite {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  }
-
+export function straightenStalePortOffsets(edges: Edge[], nodeByIdMap: Map<string, Node>): void {
   // Collect foreign real-node rects (excluding labels and groups).
   const realNodeRects: { id: string; rect: RectLite }[] = [];
   const labelRects: { id: string; rect: RectLite }[] = [];
   for (const n of nodeByIdMap.values()) {
-    const isGroup = (n as { isGroup?: boolean }).isGroup;
-    if (isGroup) {
+    if (n.isGroup) {
       continue;
     }
-    const cx = (n as { x?: number }).x ?? 0;
-    const cy = (n as { y?: number }).y ?? 0;
-    const w = (n as { width?: number }).width ?? 0;
-    const h = (n as { height?: number }).height ?? 0;
+    const cx = n.x ?? 0;
+    const cy = n.y ?? 0;
+    const w = n.width ?? 0;
+    const h = n.height ?? 0;
     if (w <= 0 || h <= 0) {
       continue;
     }
@@ -59,41 +67,29 @@ export function straightenStalePortOffsets(edges: any[], nodeByIdMap: Map<string
       top: cy - h / 2,
       bottom: cy + h / 2,
     };
-    const id = String((n as { id?: string }).id ?? '');
-    if ((n as { isEdgeLabel?: boolean }).isEdgeLabel) {
-      labelRects.push({ id, rect });
+    if (n.isEdgeLabel) {
+      labelRects.push({ id: n.id, rect });
     } else {
-      realNodeRects.push({ id, rect });
+      realNodeRects.push({ id: n.id, rect });
     }
   }
 
   // Collect all edge segments for edge-on-edge overlap checking.
-  interface SegLite {
-    edgeId: string;
-    a: { x: number; y: number };
-    b: { x: number; y: number };
-  }
   const allSegments: SegLite[] = [];
   for (const other of edges) {
-    if ((other as { isLayoutOnly?: boolean }).isLayoutOnly) {
+    if (other.isLayoutOnly) {
       continue;
     }
-    const opts = (other as { points?: { x: number; y: number }[] }).points;
+    const opts = other.points;
     if (!opts || opts.length < 2) {
       continue;
     }
-    const eid = String((other as { id?: string }).id ?? '');
     for (let i = 0; i < opts.length - 1; i++) {
-      allSegments.push({ edgeId: eid, a: opts[i], b: opts[i + 1] });
+      allSegments.push({ edgeId: other.id, a: opts[i], b: opts[i + 1] });
     }
   }
 
-  const segHitsRect = (
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-    r: RectLite,
-    buffer: number
-  ): boolean => {
+  const segHitsRect = (a: PointLite, b: PointLite, r: RectLite, buffer: number): boolean => {
     const segMinX = Math.min(a.x, b.x);
     const segMaxX = Math.max(a.x, b.x);
     const segMinY = Math.min(a.y, b.y);
@@ -115,21 +111,20 @@ export function straightenStalePortOffsets(edges: any[], nodeByIdMap: Map<string
     axis: 'y' | 'x'
   ): number | undefined => {
     for (const other of edges) {
-      if ((other as { isLayoutOnly?: boolean }).isLayoutOnly) {
+      if (other.isLayoutOnly) {
         continue;
       }
-      const oid = String((other as { id?: string }).id ?? '');
-      if (oid === excludeEdgeId) {
+      if (other.id === excludeEdgeId) {
         continue;
       }
-      const opts = (other as { points?: { x: number; y: number }[] }).points;
+      const opts = other.points;
       if (!opts || opts.length < 2) {
         continue;
       }
-      const oStart = (other as { start?: string }).start;
-      const oEnd = (other as { end?: string }).end;
+      const oStart = other.start;
+      const oEnd = other.end;
       // Use the segment incident to the shared node.
-      let incidentSeg: { a: { x: number; y: number }; b: { x: number; y: number } } | undefined;
+      let incidentSeg: { a: PointLite; b: PointLite } | undefined;
       if (oStart === nodeId) {
         incidentSeg = { a: opts[0], b: opts[1] };
       } else if (oEnd === nodeId) {
@@ -152,17 +147,17 @@ export function straightenStalePortOffsets(edges: any[], nodeByIdMap: Map<string
   // The core straightener. For each edge with a 4-point H-V-H or V-H-V
   // polyline, decide if it can be collapsed to a straight 2-point line.
   for (const edge of edges) {
-    if ((edge as { isLayoutOnly?: boolean }).isLayoutOnly) {
+    if (edge.isLayoutOnly) {
       continue;
     }
-    const pts = (edge as { points?: { x: number; y: number }[] }).points;
+    const pts = edge.points;
     if (!pts || pts.length !== 4) {
       continue;
     }
     const [p0, p1, p2, p3] = pts;
-    const startId = (edge as { start?: string }).start;
-    const endId = (edge as { end?: string }).end;
-    const edgeId = String((edge as { id?: string }).id ?? '');
+    const startId = edge.start;
+    const endId = edge.end;
+    const edgeId = edge.id;
     if (!startId || !endId) {
       continue;
     }
@@ -378,10 +373,6 @@ export function straightenStalePortOffsets(edges: any[], nodeByIdMap: Map<string
     }
 
     // Apply the straightening.
-    (edge as { points: { x: number; y: number }[] }).points = [newStart, newEnd];
-    log.debug(
-      SWIMLANE_DIR_LOG_PREFIX,
-      `straightenStalePortOffsets: collapsed ${edgeId} — ${shiftStart ? 'shifted start' : 'shifted end'} to ${targetCoord}`
-    );
+    edge.points = [newStart, newEnd];
   }
 }
