@@ -21,6 +21,8 @@ interface Point {
   y: number;
 }
 
+type OrthogonalSide = 'top' | 'bottom' | 'left' | 'right';
+
 interface LaneInfo {
   id: string;
 }
@@ -57,6 +59,32 @@ interface RoutedSegment {
   trackIndex: number;
   from: number;
   to: number;
+}
+
+function chooseOrthogonalSide(
+  node: MermaidNode,
+  target: Point,
+  fallback: OrthogonalSide
+): OrthogonalSide {
+  const cx = node.x ?? 0;
+  const cy = node.y ?? 0;
+  const dx = target.x - cx;
+  const dy = target.y - cy;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+
+  if (absDx < EPS && absDy < EPS) {
+    return fallback;
+  }
+
+  const verticalBias = 3.0;
+  if (absDy > EPS && absDy * verticalBias >= absDx) {
+    return dy > 0 ? 'bottom' : 'top';
+  }
+  if (absDx > EPS) {
+    return dx > 0 ? 'right' : 'left';
+  }
+  return fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,54 +222,24 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
     const h = node.height ?? 10;
     const cx = node.x ?? 0;
     const cy = node.y ?? 0;
+    const side = chooseOrthogonalSide(node, target, isSource ? 'bottom' : 'top');
 
-    const dx = target.x - cx;
-    const dy = target.y - cy;
-
-    const absDx = Math.abs(dx);
-    const absDy = Math.abs(dy);
-
-    if (absDx < EPS && absDy < EPS) {
-      // Same position - default to bottom for source, top for target
-      return isSource ? { x: cx, y: cy + h / 2 } : { x: cx, y: cy - h / 2 };
-    }
-
-    // For TD (top-down) flowcharts, strongly prefer vertical (top/bottom) ports
-    // This creates cleaner L-shaped paths instead of S-shaped paths
-    // Only use horizontal (left/right) ports when the target is nearly on the same row
-    //
-    // The threshold means: use vertical ports unless target is within ~30% of vertical distance horizontally
-    // e.g., if dy=100, use vertical unless dx > 300 (3x the vertical distance)
-    const verticalBias = 3.0; // Strong preference for vertical ports in TD layouts
-
-    if (absDy > EPS && absDy * verticalBias >= absDx) {
-      // Vertical movement - use top or bottom
-      if (dy > 0) {
-        // Target is below - use bottom side
-        return { x: cx, y: cy + h / 2 };
-      } else {
-        // Target is above - use top side
+    switch (side) {
+      case 'top':
         return { x: cx, y: cy - h / 2 };
-      }
-    } else if (absDx > EPS) {
-      // Horizontal movement - use left or right
-      if (dx > 0) {
-        // Target is to the right - use right side
-        return { x: cx + w / 2, y: cy };
-      } else {
-        // Target is to the left - use left side
+      case 'bottom':
+        return { x: cx, y: cy + h / 2 };
+      case 'left':
         return { x: cx - w / 2, y: cy };
-      }
-    } else {
-      // Fallback to vertical
-      return isSource ? { x: cx, y: cy + h / 2 } : { x: cx, y: cy - h / 2 };
+      case 'right':
+        return { x: cx + w / 2, y: cy };
     }
   };
 
   // Direct port-for-side helper. Used by Step 6.2's sibling side-split
   // reassignment so the main routing loop can honor a side that does
   // not match `getOrthogonalPort`'s natural choice.
-  const portForSide = (node: MermaidNode, side: 'top' | 'bottom' | 'left' | 'right'): Point => {
+  const portForSide = (node: MermaidNode, side: OrthogonalSide): Point => {
     const w = node.width ?? 10;
     const h = node.height ?? 10;
     const cx = node.x ?? 0;
@@ -395,25 +393,8 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
   const portGroups = new Map<string, { edgeIdx: number; oppositeCoord: number }[]>();
 
   // First pass: determine which side each edge connects to on each node
-  const determineSide = (node: MermaidNode, target: Point): 'top' | 'bottom' | 'left' | 'right' => {
-    const cx = node.x ?? 0;
-    const cy = node.y ?? 0;
-    const dx = target.x - cx;
-    const dy = target.y - cy;
-    const absDx = Math.abs(dx);
-    const absDy = Math.abs(dy);
-    if (absDx < EPS && absDy < EPS) {
-      return 'bottom'; // fallback
-    }
-    const verticalBias = 3.0;
-    if (absDy > EPS && absDy * verticalBias >= absDx) {
-      return dy > 0 ? 'bottom' : 'top';
-    }
-    if (absDx > EPS) {
-      return dx > 0 ? 'right' : 'left';
-    }
-    return 'bottom';
-  };
+  const determineSide = (node: MermaidNode, target: Point): OrthogonalSide =>
+    chooseOrthogonalSide(node, target, 'bottom');
 
   // ----- Step 6.1: compute initial sides for every edge ---------------
   //
@@ -1414,14 +1395,10 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
       // Try to construct a minimal path using only the extreme coordinates
       // For a U-shaped detour going right: start -> (maxX, start.y) -> (maxX, bestY) -> (end.x, bestY) -> end
       // For a U-shaped detour going left: start -> (minX, start.y) -> (minX, bestY) -> (end.x, bestY) -> end
-
-      let simplified: Point[] | null = null;
-
-      if (wentRight && !wentLeft) {
-        // Try right U-shape: go right, down/up, back left
-        const bestY = findBestReturnY(maxX);
-        const corner1: Point = { x: maxX, y: start.y };
-        const corner2: Point = { x: maxX, y: bestY };
+      const trySimplifyWithDetourX = (detourX: number): Point[] | null => {
+        const bestY = findBestReturnY(detourX);
+        const corner1: Point = { x: detourX, y: start.y };
+        const corner2: Point = { x: detourX, y: bestY };
         const corner3: Point = { x: end.x, y: bestY };
         const seg1Blocked = checkSegmentBlocked(start, corner1);
         const seg2Blocked = checkSegmentBlocked(corner1, corner2);
@@ -1430,30 +1407,19 @@ export function routeEdgesOrthogonal(data: LayoutData, direction?: string): Layo
 
         if (!seg1Blocked && !seg2Blocked && !seg3Blocked && !seg4Blocked) {
           if (Math.abs(bestY - end.y) < EPS) {
-            simplified = [start, corner1, corner2, end];
-          } else {
-            simplified = [start, corner1, corner2, corner3, end];
+            return [start, corner1, corner2, end];
           }
+          return [start, corner1, corner2, corner3, end];
         }
-      } else if (wentLeft && !wentRight) {
-        // Try left U-shape
-        const bestY = findBestReturnY(minX);
-        const corner1: Point = { x: minX, y: start.y };
-        const corner2: Point = { x: minX, y: bestY };
-        const corner3: Point = { x: end.x, y: bestY };
-        const seg1Blocked = checkSegmentBlocked(start, corner1);
-        const seg2Blocked = checkSegmentBlocked(corner1, corner2);
-        const seg3Blocked = checkSegmentBlocked(corner2, corner3);
-        const seg4Blocked = bestY !== end.y ? checkSegmentBlocked(corner3, end) : false;
+        return null;
+      };
 
-        if (!seg1Blocked && !seg2Blocked && !seg3Blocked && !seg4Blocked) {
-          if (Math.abs(bestY - end.y) < EPS) {
-            simplified = [start, corner1, corner2, end];
-          } else {
-            simplified = [start, corner1, corner2, corner3, end];
-          }
-        }
-      }
+      const simplified =
+        wentRight && !wentLeft
+          ? trySimplifyWithDetourX(maxX)
+          : wentLeft && !wentRight
+            ? trySimplifyWithDetourX(minX)
+            : null;
 
       if (simplified) {
         foundPath = simplified;
