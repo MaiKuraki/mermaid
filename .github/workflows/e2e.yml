@@ -75,13 +75,20 @@ jobs:
   # Cypress specs to run. Runs in parallel with the `cache` job so it does not
   # add to the critical path.
   #
-  # Feature flag: set the repository variable E2E_SCOPE_BY_DIAGRAM to 'true'
-  # (Settings → Variables → Actions) to enable diagram-scoped test selection.
-  # When the flag is not set or is 'false', the full 5-container matrix runs.
+  # Kill-switch: set the repository variable E2E_SCOPE_BY_DIAGRAM to 'false'
+  # (Settings → Variables → Actions) to disable diagram-scoped test selection.
+  # Scoping is ON by default so that fork PRs (where repository variables are
+  # not exposed) still benefit from it.
   #
   # When scoping is active and all changes are confined to a single diagram,
-  # only that diagram's specs run in a single container. Any change to shared
-  # rendering code, themes, config, or the parser falls back to the full suite.
+  # the matrix is reduced to a single container that runs only that diagram's
+  # specs. Containers 2-5 are not scheduled at all. Any change to shared
+  # rendering code, themes, config, or the parser falls back to the full
+  # suite (all five containers run).
+  #
+  # Branch protection: require the aggregator job `e2e-required` (defined at
+  # the bottom of this file) rather than the per-matrix `e2e (N)` checks,
+  # since the matrix size is no longer constant across runs.
   detect-scope:
     runs-on: ubuntu-latest
     outputs:
@@ -145,6 +152,9 @@ jobs:
                  | node scripts/e2e-diagram-scope.mjs \
                  || echo "")
 
+          # Scoped runs use a single-entry matrix so containers 2-5 are not
+          # scheduled. The SKIP case also uses [1] because the job-level `if:`
+          # on the e2e job skips the entire job anyway.
           if [ "$SPEC" = "SKIP" ]; then
             echo "spec_pattern=SKIP" >> "$GITHUB_OUTPUT"
             echo "matrix=[1]" >> "$GITHUB_OUTPUT"
@@ -168,6 +178,8 @@ jobs:
 
   e2e:
     # Skip the entire e2e job when only docs/ignorable files changed.
+    # Scoping is handled by the matrix size from detect-scope: scoped runs use
+    # a single container, full runs use five.
     if: needs.detect-scope.outputs.spec_pattern != 'SKIP'
     runs-on: ubuntu-latest
     container:
@@ -257,3 +269,35 @@ jobs:
           fail_ci_if_error: false
           verbose: true
           token: 6845cc80-77ee-4e17-85a1-026cd95e0766
+
+  # Aggregator job that produces a single stable status check for branch
+  # protection. Succeeds when the e2e matrix succeeded OR was legitimately
+  # skipped (only docs/ignorable files changed). Fails when any matrix entry
+  # failed or was cancelled.
+  #
+  # Configure GitHub branch protection to require this check (`e2e-required`)
+  # rather than the per-matrix `e2e (N)` checks, since the matrix size varies
+  # between scoped runs (1 entry) and full runs (5 entries).
+  e2e-required:
+    if: always()
+    needs: [detect-scope, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify e2e outcome
+        env:
+          E2E_RESULT: ${{ needs.e2e.result }}
+          SCOPE_RESULT: ${{ needs.detect-scope.result }}
+          SPEC_PATTERN: ${{ needs.detect-scope.outputs.spec_pattern }}
+        run: |
+          echo "detect-scope result: ${SCOPE_RESULT}"
+          echo "detect-scope spec_pattern: ${SPEC_PATTERN}"
+          echo "e2e result: ${E2E_RESULT}"
+          case "${E2E_RESULT}" in
+            success|skipped)
+              echo "OK — required check satisfied."
+              ;;
+            *)
+              echo "FAIL — e2e matrix did not complete successfully."
+              exit 1
+              ;;
+          esac
