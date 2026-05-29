@@ -116,7 +116,5 @@ export function postProcessSwimlaneLayout(layout: LayoutData, direction?: string
 
   anchorLabelsToPolyline(edges, nodeByIdMap);
 
-  resolveRenderedOrthogonalCrossings(edges, nodeByIdMap);
-
   prepareEdgeEndpointsForRenderer(edges, nodeByIdMap);
 }
