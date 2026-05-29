@@ -141,29 +141,34 @@ export async function createGraphWithElements(
   // Collector for DDLT size capture (only allocated when the flag is on).
   const capturedSizes: CapturedNodeSize[] | null = shouldCaptureSizes() ? [] : null;
 
+  // When the container element is detached (no real DOM — e.g. headless unit
+  // tests that exercise the layout engine without rendering), `insertNode`
+  // cannot measure labels and would dereference a null node. The browser
+  // always passes a live container, so render + measure only when one exists;
+  // otherwise still build the graph topology with unmeasured (0) sizes.
+  const hasDom = element.node() != null;
+
   // Insert nodes into the DOM and add them to the graph.
   await Promise.all(
     data4Layout.nodes.map(async (node) => {
       if (node.isGroup) {
         graph.setNode(node.id, { ...node });
       } else {
-        const childNodeEl = await insertNode(nodesGroup, node, { config, dir: node.dir });
-        const boundingBox = childNodeEl.node()?.getBBox() ?? { width: 0, height: 0 };
-        nodeElements.set(node.id, childNodeEl as D3Selection<SVGElement | SVGGElement>);
-        node.width = boundingBox.width;
-        node.height = boundingBox.height;
-        if (capturedSizes) {
-          capturedSizes.push({
-            id: node.id,
-            width: boundingBox.width,
-            height: boundingBox.height,
-          });
+        if (hasDom) {
+          const childNodeEl = await insertNode(nodesGroup, node, { config, dir: node.dir });
+          const boundingBox = childNodeEl.node()?.getBBox() ?? { width: 0, height: 0 };
+          nodeElements.set(node.id, childNodeEl as D3Selection<SVGElement | SVGGElement>);
+          node.width = boundingBox.width;
+          node.height = boundingBox.height;
+          if (capturedSizes) {
+            capturedSizes.push({
+              id: node.id,
+              width: boundingBox.width,
+              height: boundingBox.height,
+            });
+          }
         }
         graph.setNode(node.id, { ...node });
-        if (node.parentId) {
-          // Optionally store the parent relationship
-          // e.g., you could update the node attributes or handle it as needed.
-        }
       }
     })
   );
@@ -195,28 +200,32 @@ export async function createGraphWithElements(
           ...(startNode?.dir ? { dir: startNode.dir } : {}),
         };
 
-        // Insert the label node into the DOM
-        const labelNodeEl = await insertNode(nodesGroup, labelNode, {
-          config,
-          dir: startNode?.dir,
-        });
-        const boundingBox = labelNodeEl.node()?.getBBox() ?? { width: 0, height: 0 };
-
-        // Update node dimensions
-        labelNode.width = boundingBox.width;
-        labelNode.height = boundingBox.height;
-
-        if (capturedSizes) {
-          capturedSizes.push({
-            id: labelNodeId,
-            width: boundingBox.width,
-            height: boundingBox.height,
+        // Insert the label node into the DOM (only when a real container
+        // exists; headless callers keep the dummy's measured size at 0).
+        if (hasDom) {
+          const labelNodeEl = await insertNode(nodesGroup, labelNode, {
+            config,
+            dir: startNode?.dir,
           });
+          const boundingBox = labelNodeEl.node()?.getBBox() ?? { width: 0, height: 0 };
+
+          // Update node dimensions
+          labelNode.width = boundingBox.width;
+          labelNode.height = boundingBox.height;
+
+          if (capturedSizes) {
+            capturedSizes.push({
+              id: labelNodeId,
+              width: boundingBox.width,
+              height: boundingBox.height,
+            });
+          }
+
+          nodeElements.set(labelNodeId, labelNodeEl as D3Selection<SVGElement | SVGGElement>);
         }
 
         // Add to graph and tracking maps
         graph.setNode(labelNodeId, { ...labelNode });
-        nodeElements.set(labelNodeId, labelNodeEl as D3Selection<SVGElement | SVGGElement>);
         data4Layout.nodes.push(labelNode);
 
         // Create two edges to replace the original one
