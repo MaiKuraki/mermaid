@@ -1,4 +1,4 @@
-import { renderGraph } from '../../../helpers/util.ts';
+import { imgSnapshotTest, renderGraph } from '../../../helpers/util.ts';
 
 const SWIMLANE_FIXTURE_DIR = 'cypress/platform/dev-diagrams/layout-tests/swimlanes';
 
@@ -21,6 +21,17 @@ const SWIMLANE_FIXTURES = [
   'simple-2.mmd',
 ];
 
+// A representative subset additionally rendered in handdrawn/rough mode. Swimlanes
+// inherits rough rendering from the flowchart node shapes and the shared cluster
+// renderer (both branch on `look === 'handDrawn'`); these snapshots exercise that
+// path. Kept small to limit snapshot churn — a decision diamond, edge labels, and
+// a wide multi-lane top-to-bottom diagram.
+const HANDDRAWN_FIXTURES = [
+  '4-car-fun-sales-tb.mmd',
+  '9-edge-labels.mmd',
+  'intake-review-complete.mmd',
+];
+
 const shapeSelector = 'rect, polygon, ellipse, circle, path';
 const edgePathSelector = 'g.edgePath path.path, g.edgePath path';
 
@@ -34,6 +45,30 @@ const asStandaloneSwimlanes = (source: string): string => {
   return source;
 };
 
+// Swimlanes fixtures render with SVG labels (htmlLabels:false) for stable
+// cross-browser text, and natural width so the whole diagram is captured.
+const swimlanesFlowchartConfig = { htmlLabels: false, useMaxWidth: false } as const;
+
+// Capture an Argos visual-regression snapshot of a swimlanes diagram. Named
+// after the enclosing test. Used for the fixture sweep so the suite can catch
+// rendering regressions, not just structural ones.
+const snapshotSwimlanes = (
+  graph: string,
+  options: Parameters<typeof imgSnapshotTest>[1] = {}
+): void => {
+  const { flowchart, ...rest } = options;
+  imgSnapshotTest(graph, {
+    logLevel: 0,
+    ...rest,
+    flowchart: {
+      ...swimlanesFlowchartConfig,
+      ...flowchart,
+    },
+  });
+};
+
+// Render without a screenshot — used by the behaviour tests below that assert on
+// the DOM/CSS rather than the rendered pixels.
 const renderSwimlanes = (
   graph: string,
   name: string,
@@ -46,8 +81,7 @@ const renderSwimlanes = (
     name,
     ...rest,
     flowchart: {
-      htmlLabels: false,
-      useMaxWidth: false,
+      ...swimlanesFlowchartConfig,
       ...flowchart,
     },
   });
@@ -72,8 +106,19 @@ describe('Swimlanes diagram', () => {
   SWIMLANE_FIXTURES.forEach((fixture) => {
     it(`renders ${fixture} as a standalone swimlanes diagram`, () => {
       cy.readFile(`${SWIMLANE_FIXTURE_DIR}/${fixture}`, 'utf8').then((source) => {
-        renderSwimlanes(asStandaloneSwimlanes(source), `swimlanes-fixture-${fixture}`);
+        snapshotSwimlanes(asStandaloneSwimlanes(source));
         assertStandaloneSwimlanesRendered();
+      });
+    });
+  });
+
+  describe('handdrawn (rough) look', () => {
+    HANDDRAWN_FIXTURES.forEach((fixture) => {
+      it(`renders ${fixture} in handdrawn look`, () => {
+        cy.readFile(`${SWIMLANE_FIXTURE_DIR}/${fixture}`, 'utf8').then((source) => {
+          snapshotSwimlanes(asStandaloneSwimlanes(source), { look: 'handDrawn' });
+          assertStandaloneSwimlanesRendered();
+        });
       });
     });
   });
