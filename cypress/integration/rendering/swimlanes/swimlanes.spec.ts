@@ -25,8 +25,14 @@ const shapeSelector = 'rect, polygon, ellipse, circle, path';
 const edgePathSelector = 'g.edgePath path.path, g.edgePath path';
 
 const asStandaloneSwimlanes = (source: string): string => {
+  // Fixtures that already declare the standalone `swimlanes` diagram type are
+  // rendered as-is; `flowchart`/`graph` fixtures are converted to swimlanes by
+  // swapping their header.
+  if (/^\s*swimlanes\s/m.test(source)) {
+    return source;
+  }
   const updated = source.replace(/^(\s*)(?:flowchart|graph)(?=\s)/m, '$1swimlanes');
-  expect(updated, 'fixture should contain a flowchart/graph header').not.to.eq(source);
+  expect(updated, 'fixture should contain a flowchart/graph or swimlanes header').not.to.eq(source);
   expect(updated, 'fixture should use the standalone swimlanes diagram type').to.match(
     /^\s*swimlanes\s/m
   );
