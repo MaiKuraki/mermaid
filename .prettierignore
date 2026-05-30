@@ -18,7 +18,5 @@ generated/
 # Ignore the files creates in /demos/dev except for example.html
 demos/dev/**
 !/demos/dev/example.html
-# Verbatim academic-paper references for the layout algorithms — keep as-is
-packages/mermaid/references/**
 # TODO: Lots of errors to fix
 cypress/platform/state-refactor.html
