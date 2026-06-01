@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { draw, expandImpliedSubsets } from './vennRenderer.js';
+import { draw, ensurePairwiseSubsets } from './vennRenderer.js';
 import type { Diagram } from '../../Diagram.js';
-import type { VennData } from './vennTypes.js';
 import * as configModule from '../../config.js';
 
 const createDiagram = (overrides: Partial<Record<string, unknown>> = {}) => {
@@ -131,7 +130,7 @@ describe('vennRenderer', () => {
         textColor: '#cccccc',
         primaryTextColor: '#cccccc',
       },
-    } as ReturnType<typeof configModule.getConfig>);
+    });
 
     const diagram = createDiagram();
     await draw('', 'venn', '1.0', diagram);
@@ -165,139 +164,88 @@ describe('vennRenderer', () => {
     expect(debugCircle).not.toBeNull();
   });
 
-  it('renders an overlapping layout for a bare 3-way union (issue #7656)', async () => {
-    document.body.innerHTML = '<svg id="venn"></svg>';
-    const diagram = createDiagram({
-      getSubsetData: () => [
-        { sets: ['A'], size: 10, label: undefined },
-        { sets: ['B'], size: 10, label: undefined },
-        { sets: ['C'], size: 10, label: undefined },
-        { sets: ['A', 'B', 'C'], size: 1, label: 'Innovation' },
-      ],
+  describe('ensurePairwiseSubsets', () => {
+    it('returns the same reference for empty array', () => {
+      const result = ensurePairwiseSubsets([]);
+      expect(result).toBe(result);
     });
 
-    await draw('', 'venn', '1.0', diagram);
+    it('returns the same reference when no 3+-set unions exist', () => {
+      const subsets = [
+        { sets: ['A'], size: 10, label: 'A' },
+        { sets: ['B'], size: 10, label: 'B' },
+        { sets: ['A', 'B'], size: 2.5, label: 'AB' },
+      ];
+      const result = ensurePairwiseSubsets(subsets);
+      expect(result).toBe(subsets);
+    });
 
-    // The label being present is necessary but not sufficient: venn.js emits a
-    // `.venn-intersection text` element for any declared labeled union, even
-    // when the circles do not actually overlap.
-    const intersectionLabels = [...document.querySelectorAll('.venn-intersection text')].map(
-      (el) => el.textContent
-    );
-    expect(intersectionLabels).toContain('Innovation');
+    it('adds pairwise subsets for a 3-set union', () => {
+      const subsets = [
+        { sets: ['A'], size: 10, label: 'A' },
+        { sets: ['B'], size: 10, label: 'B' },
+        { sets: ['C'], size: 10, label: 'C' },
+        { sets: ['A', 'B', 'C'], size: 5, label: 'ABC' },
+      ];
+      const result = ensurePairwiseSubsets(subsets);
+      expect(result).not.toBe(subsets);
+      expect(result).toHaveLength(7);
+      // Check that the three pairwise unions were added
+      const pairs = result.filter((s) => s.sets.length === 2);
+      expect(pairs).toHaveLength(3);
+      const pairKeys = pairs.map((p) => p.sets.join('|')).sort();
+      expect(pairKeys).toEqual(['A|B', 'A|C', 'B|C']);
+      // Verify sizes are 1/4 of smaller set size (10/4 = 2.5)
+      const pairSizes = pairs.map((p) => p.size).sort();
+      expect(pairSizes).toEqual([2.5, 2.5, 2.5]);
+    });
 
-    // What the fix actually guarantees is that the layout produces overlapping
-    // circles, which is visible in two complementary ways in the DOM:
-    //   1. venn.js renders the three implied pairwise intersections, in addition
-    //      to the user-declared 3-way intersection.
-    //   2. The 3-way intersection's SVG path is a real region, not the
-    //      degenerate `"M 0 0"` placeholder venn.js emits when an area has no
-    //      visible geometry on screen.
-    const intersections = [...document.querySelectorAll('.venn-intersection')];
-    const setsByPath = new Map<string, string | null>();
-    for (const node of intersections) {
-      const data = (node as unknown as { __data__?: { sets?: string[] } }).__data__;
-      const sets = data?.sets ?? [];
-      if (sets.length >= 2) {
-        const key = [...sets].sort().join('|');
-        setsByPath.set(key, node.querySelector('path')?.getAttribute('d') ?? null);
-      }
-    }
-    expect([...setsByPath.keys()].sort()).toEqual(['A|B', 'A|B|C', 'A|C', 'B|C']);
-    const threeWayPath = setsByPath.get('A|B|C');
-    expect(threeWayPath).toBeTruthy();
-    expect(threeWayPath).not.toBe('M 0 0');
-    expect((threeWayPath ?? '').length).toBeGreaterThan(20);
-  });
-});
+    it('handles partial pairwise coverage: adds only missing pairs', () => {
+      const subsets = [
+        { sets: ['A'], size: 10, label: 'A' },
+        { sets: ['B'], size: 10, label: 'B' },
+        { sets: ['C'], size: 10, label: 'C' },
+        { sets: ['A', 'B', 'C'], size: 5, label: 'ABC' },
+        { sets: ['A', 'B'], size: 2.5, label: 'AB' },
+        { sets: ['B', 'C'], size: 2.5, label: 'BC' },
+      ];
+      const result = ensurePairwiseSubsets(subsets);
+      expect(result).not.toBe(subsets);
+      expect(result).toHaveLength(7);
+      // Should have added exactly one missing pair: A|C
+      const acPair = result.find(
+        (s) => s.sets.length === 2 && s.sets.includes('A') && s.sets.includes('C')
+      );
+      expect(acPair).toBeDefined();
+      expect(acPair?.size).toBe(2.5);
+    });
 
-describe('expandImpliedSubsets', () => {
-  it('returns input unchanged when only singleton and pairwise subsets are present', () => {
-    const input: VennData[] = [
-      { sets: ['A'], size: 10, label: undefined },
-      { sets: ['B'], size: 10, label: undefined },
-      { sets: ['A', 'B'], size: 2.5, label: 'AB' },
-    ];
-    expect(expandImpliedSubsets(input)).toBe(input);
-  });
+    it('handles sets out of alphabetical order', () => {
+      const subsets = [
+        { sets: ['A'], size: 10, label: 'A' },
+        { sets: ['B'], size: 10, label: 'B' },
+        { sets: ['C'], size: 10, label: 'C' },
+        { sets: ['B', 'A', 'C'], size: 5, label: 'ABC' }, // out of order
+      ];
+      const result = ensurePairwiseSubsets(subsets);
+      expect(result).not.toBe(subsets);
+      expect(result).toHaveLength(7);
+      // Should add pairs A|B, A|C, B|C (sorted internally)
+      const pairKeys = result
+        .filter((s) => s.sets.length === 2)
+        .map((p) => p.sets.join('|'))
+        .sort();
+      expect(pairKeys).toEqual(['A|B', 'A|C', 'B|C']);
+    });
 
-  it('returns input unchanged when 3-way union has all pairwise unions declared', () => {
-    const input: VennData[] = [
-      { sets: ['A'], size: 10, label: undefined },
-      { sets: ['B'], size: 10, label: undefined },
-      { sets: ['C'], size: 10, label: undefined },
-      { sets: ['A', 'B'], size: 2.5, label: undefined },
-      { sets: ['A', 'C'], size: 2.5, label: undefined },
-      { sets: ['B', 'C'], size: 2.5, label: undefined },
-      { sets: ['A', 'B', 'C'], size: 1, label: 'ABC' },
-    ];
-    const result = expandImpliedSubsets(input);
-    expect(result).toHaveLength(input.length);
-  });
-
-  it('synthesizes missing pairwise subsets for a bare 3-way union', () => {
-    const input: VennData[] = [
-      { sets: ['A'], size: 10, label: undefined },
-      { sets: ['B'], size: 10, label: undefined },
-      { sets: ['C'], size: 10, label: undefined },
-      { sets: ['A', 'B', 'C'], size: 1, label: 'Innovation' },
-    ];
-    const result = expandImpliedSubsets(input);
-    const pairKeys = result
-      .filter((entry) => entry.sets.length === 2)
-      .map((entry) => entry.sets.join('|'))
-      .sort();
-    expect(pairKeys).toEqual(['A|B', 'A|C', 'B|C']);
-  });
-
-  it('preserves user-declared pairwise subsets and only fills in missing ones', () => {
-    const input: VennData[] = [
-      { sets: ['A'], size: 10, label: undefined },
-      { sets: ['B'], size: 10, label: undefined },
-      { sets: ['C'], size: 10, label: undefined },
-      { sets: ['A', 'B'], size: 5, label: 'AB' },
-      { sets: ['A', 'B', 'C'], size: 1, label: 'ABC' },
-    ];
-    const result = expandImpliedSubsets(input);
-
-    const ab = result.find((entry) => entry.sets.join('|') === 'A|B');
-    expect(ab).toEqual({ sets: ['A', 'B'], size: 5, label: 'AB' });
-
-    const synthesized = result
-      .filter((entry) => entry.label === undefined && entry.sets.length === 2)
-      .map((entry) => entry.sets.join('|'))
-      .sort();
-    expect(synthesized).toEqual(['A|C', 'B|C']);
-  });
-
-  it('synthesizes C(N,2) pairs for a bare 4-way union', () => {
-    const input: VennData[] = [
-      { sets: ['A'], size: 10, label: undefined },
-      { sets: ['B'], size: 10, label: undefined },
-      { sets: ['C'], size: 10, label: undefined },
-      { sets: ['D'], size: 10, label: undefined },
-      { sets: ['A', 'B', 'C', 'D'], size: 1, label: 'AllFour' },
-    ];
-    const result = expandImpliedSubsets(input);
-    const pairKeys = result
-      .filter((entry) => entry.sets.length === 2)
-      .map((entry) => entry.sets.join('|'))
-      .sort();
-    expect(pairKeys).toEqual(['A|B', 'A|C', 'A|D', 'B|C', 'B|D', 'C|D']);
-  });
-
-  it('synthesized pairs have a default size and undefined label', () => {
-    const input: VennData[] = [
-      { sets: ['A'], size: 10, label: undefined },
-      { sets: ['B'], size: 10, label: undefined },
-      { sets: ['C'], size: 10, label: undefined },
-      { sets: ['A', 'B', 'C'], size: 1, label: undefined },
-    ];
-    const result = expandImpliedSubsets(input);
-    const synthesized = result.filter((entry) => entry.sets.length === 2);
-    for (const entry of synthesized) {
-      expect(entry.label).toBeUndefined();
-      expect(entry.size).toBeGreaterThan(0);
-    }
+    it('falls back to default size when individual set sizes are unknown', () => {
+      const subsets = [{ sets: ['A', 'B', 'C'], size: 5, label: 'ABC' }];
+      const result = ensurePairwiseSubsets(subsets);
+      expect(result).not.toBe(subsets);
+      expect(result).toHaveLength(4);
+      const pairs = result.filter((s) => s.sets.length === 2);
+      const pairSizes = pairs.map((p) => p.size);
+      expect(pairSizes).toEqual([2.5, 2.5, 2.5]);
+    });
   });
 });

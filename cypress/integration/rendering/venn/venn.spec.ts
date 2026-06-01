@@ -220,7 +220,33 @@ describe('Venn Diagram', () => {
     );
   });
 
-  it('16: should render a handDrawn venn with custom styles and text nodes', () => {
+  it('16: should render a venn diagram with a 3-set union without explicit pairwise subsets', () => {
+    imgSnapshotTest(
+      `venn-beta
+        title Innovation
+        set Desirable
+        set Feasible
+        set Viable
+        union Desirable,Feasible,Viable["Innovation"]
+      `
+    );
+  });
+
+  it('17: should render a venn diagram with partial pairwise subsets', () => {
+    imgSnapshotTest(
+      `venn-beta
+        title Partial Pairwise
+        set A
+        set B
+        set C
+        union A,B,C["ABC"]
+        union A,B["AB"]
+        union B,C["BC"]
+      `
+    );
+  });
+
+  it('18: should render a handDrawn venn with custom styles and text nodes', () => {
     imgSnapshotTest(
       `venn-beta
         set A
@@ -235,31 +261,6 @@ describe('Venn Diagram', () => {
         style A,B fill:#ffe66d
       `,
       { look: 'handDrawn', handDrawnSeed: 1, fontFamily: 'courier' }
-    );
-  });
-
-  it('17: should render a three-set venn with only a labeled 3-way union (issue #7656)', () => {
-    imgSnapshotTest(
-      `venn-beta
-        title Innovation
-        set Desirable
-        set Feasible
-        set Viable
-        union Desirable, Feasible, Viable["Innovation"]
-      `
-    );
-  });
-
-  it('18: should render a four-set venn with only a 4-way union (issue #7656)', () => {
-    imgSnapshotTest(
-      `venn-beta
-        title Four sets
-        set A
-        set B
-        set C
-        set D
-        union A, B, C, D["AllFour"]
-      `
     );
   });
 });

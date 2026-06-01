@@ -914,6 +914,21 @@ export interface PieDiagramConfig extends BaseDiagramConfig {
    *
    */
   textPosition?: number;
+  /**
+   * Donut hole ratio. Valid value are from 0 to 0.9. Default to 0.
+   *
+   */
+  donutHole?: number;
+  /**
+   * Legend's position relative to the chart. Default to right.
+   *
+   */
+  legendPosition?: 'top' | 'bottom' | 'left' | 'right' | 'center';
+  /**
+   * Highlight specific slice with matching label. Set to 'hover' to highlight hovered slice.
+   *
+   */
+  highlightSlice?: string;
 }
 /**
  * This interface was referenced by `MermaidConfig`'s JSON-Schema
@@ -1090,6 +1105,10 @@ export interface XYChartAxisConfig {
    * Width of the axis line
    */
   axisLineWidth?: number;
+  /**
+   * Label rotation in degrees
+   */
+  labelRotation?: number;
 }
 /**
  * The object containing configurations specific for req diagrams
