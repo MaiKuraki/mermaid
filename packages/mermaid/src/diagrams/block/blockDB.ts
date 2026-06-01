@@ -1,5 +1,6 @@
 import { clone } from 'es-toolkit/compat';
 import * as configApi from '../../config.js';
+import { getConfig } from '../../diagram-api/diagramAPI.js';
 import type { DiagramDB } from '../../diagram-api/types.js';
 import { log } from '../../logger.js';
 import common from '../common/common.js';
@@ -15,10 +16,10 @@ const COLOR_KEYWORD = 'color';
 const FILL_KEYWORD = 'fill';
 const BG_FILL = 'bgFill';
 const STYLECLASS_SEP = ',';
-const sanitizeText = (txt: string) => common.sanitizeText(txt, configApi.getConfig());
-
 let classes = new Map<string, ClassDef>();
 let diagramId = '';
+
+const sanitizeText = (txt: string) => common.sanitizeText(txt, getConfig());
 
 /**
  * Called when the parser comes across a (style) class definition
