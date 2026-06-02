@@ -758,7 +758,7 @@ describe('mermaidAPI', () => {
       `);
     });
     it('resolves swimlanes as its own diagram type', async () => {
-      await expect(mermaidAPI.parse('swimlanes TD;A-->B;')).resolves.toMatchInlineSnapshot(`
+      await expect(mermaidAPI.parse('swimlane TD;A-->B;')).resolves.toMatchInlineSnapshot(`
         {
           "config": {},
           "diagramType": "swimlanes",

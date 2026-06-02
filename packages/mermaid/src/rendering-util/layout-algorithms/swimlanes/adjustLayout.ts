@@ -64,8 +64,8 @@ export async function adjustLayout(
   }
 
   // Render-time post-processing: replace edge crossings with line hops.
-  // Default: 'arc'. Set swimlanes.lineHops = false to opt out.
-  const lineHopsConfig = data4Layout.config?.swimlanes?.lineHops;
+  // Default: 'arc'. Set swimlane.lineHops = false to opt out.
+  const lineHopsConfig = data4Layout.config?.swimlane?.lineHops;
   if (lineHopsConfig !== false) {
     const jumpStyle: 'arc' | 'gap' = lineHopsConfig === 'gap' ? 'gap' : 'arc';
     const edgeGeometries = data4Layout.edges
