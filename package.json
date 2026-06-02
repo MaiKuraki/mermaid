@@ -167,7 +167,8 @@
   "pnpm": {
     "overrides": {
       "dependency-tree": "11.4.3",
-      "@isaacs/brace-expansion": "^5.0.1"
+      "@isaacs/brace-expansion": "^5.0.1",
+      "minimatch@10": "^10.2.1"
     },
     "patchedDependencies": {
       "roughjs": "patches/roughjs.patch"
