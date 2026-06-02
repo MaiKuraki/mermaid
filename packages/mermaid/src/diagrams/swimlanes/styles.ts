@@ -15,7 +15,10 @@ import type { FlowChartStyleOptions } from '../flowchart/styles.js';
 const getStyles = (options: FlowChartStyleOptions): string =>
   `${getFlowchartStyles(options)}
   .swimlane.cluster rect {
-    stroke: ${options.clusterBkg} !important;
+    stroke: ${options.clusterBorder} !important;
+  }
+  [data-look="neo"].cluster rect {
+    filter: none;
   }
 `;
 
