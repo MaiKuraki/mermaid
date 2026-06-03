@@ -4,8 +4,26 @@ import {
   buildSubgraphLayoutOptions,
   dir2ElkDirection,
   ensureEndMarkerSegmentLength,
+  prepareLayoutForElk,
   runElkLayoutCore,
 } from '../render.js';
+
+const log = {
+  debug: () => undefined,
+  error: () => undefined,
+  info: () => undefined,
+  warn: () => undefined,
+};
+
+const elkRenderContext = {
+  helpers: {
+    common: { lineBreakRegex: /<br\s*\/?>/gi },
+    getConfig: () => ({ flowchart: { wrappingWidth: 200 }, curve: undefined }),
+    interpolateToCurve: (curve: unknown) => curve,
+    log,
+  },
+  options: { algorithm: 'elk.layered' },
+} as any;
 
 describe('buildSubgraphLayoutOptions', () => {
   it('propagates mergeEdges to subgraphs without an explicit direction', () => {
@@ -66,14 +84,61 @@ describe('dir2ElkDirection', () => {
   it('defaults to DOWN for unknown', () => expect(dir2ElkDirection('xyz')).toBe('DOWN'));
 });
 
-describe('buildElkGraphFromLayoutData', () => {
-  const log = {
-    debug: () => undefined,
-    error: () => undefined,
-    info: () => undefined,
-    warn: () => undefined,
-  };
+describe('prepareLayoutForElk', () => {
+  it('preserves diagram-specific edge classes and styles', () => {
+    const data = {
+      config: {},
+      nodes: [],
+      edges: [
+        {
+          id: 'er-edge',
+          start: 'A',
+          end: 'B',
+          label: 'owns',
+          classes: 'relationshipLine',
+          thickness: 'normal',
+          pattern: 'dashed',
+          arrowTypeStart: 'zero_or_one',
+          arrowTypeEnd: 'only_one',
+          labelType: 'markdown',
+        },
+        {
+          id: 'class-edge',
+          start: 'Controller',
+          end: 'Model',
+          label: 'uses',
+          classes: 'relation',
+          style: ['stroke:red', 'stroke-width:4px'],
+          labelStyle: ['display: inline-block'],
+          thickness: 'normal',
+          pattern: 'solid',
+          arrowTypeStart: 'none',
+          arrowTypeEnd: 'extension',
+          labelType: 'markdown',
+        },
+      ],
+    } as any;
 
+    prepareLayoutForElk(data, elkRenderContext);
+
+    expect(data.edges[0]).toMatchObject({
+      classes: 'relationshipLine',
+      thickness: 'normal',
+      pattern: 'dashed',
+      arrowTypeStart: 'zero_or_one',
+      arrowTypeEnd: 'only_one',
+    });
+    expect(data.edges[1]).toMatchObject({
+      classes: 'relation',
+      style: ['stroke:red', 'stroke-width:4px'],
+      labelStyle: ['display: inline-block'],
+      arrowTypeStart: 'none',
+      arrowTypeEnd: 'extension',
+    });
+  });
+});
+
+describe('buildElkGraphFromLayoutData', () => {
   it('builds an ELK graph from measured layout data without DOM handles', () => {
     const data = {
       direction: 'LR',
@@ -196,12 +261,6 @@ describe('runElkLayoutCore', () => {
       ],
     } as any;
 
-    const log = {
-      debug: () => undefined,
-      error: () => undefined,
-      info: () => undefined,
-      warn: () => undefined,
-    };
     const context = {
       helpers: {
         common: { lineBreakRegex: /<br\s*\/?>/gi },

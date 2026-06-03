@@ -846,43 +846,51 @@ export function ensureEndMarkerSegmentLength(
 function applyElkEdgeRenderData(data4Layout: LayoutData, elkContext: ElkLayoutContext): void {
   const defaultInterpolate = (data4Layout.edges as unknown as { defaultInterpolate?: unknown })
     .defaultInterpolate;
+  const defaultStyle = (data4Layout.edges as unknown as { defaultStyle?: string[] }).defaultStyle;
   const conf = elkContext.getConfig();
 
   data4Layout.edges.forEach((edge) => {
     const edgeData = buildEdgeData(
       edge,
       {
+        defaultStyle,
         defaultInterpolate,
         confCurve: conf.curve,
       },
       elkContext
     );
-    const linkNameStart = 'LS_' + edge.start;
-    const linkNameEnd = 'LE_' + edge.end;
-    Object.assign(edge, edgeData, {
-      classes: 'flowchart-link ' + linkNameStart + ' ' + linkNameEnd,
-    });
+    Object.assign(edge, edgeData);
   });
+}
+
+function buildFallbackEdgeClasses(edge: Edge): string | undefined {
+  if (edge.classes !== undefined) {
+    return edge.classes;
+  }
+  if (edge.start && edge.end) {
+    return `flowchart-link LS_${edge.start} LE_${edge.end}`;
+  }
+  return undefined;
 }
 
 function computeStroke(
   stroke: string | undefined,
-  defaultStyle?: string,
-  defaultLabelStyle?: string
+  defaultStyle?: string[],
+  defaultLabelStyle?: string[]
 ) {
   let thickness = 'normal';
   let pattern = 'solid';
-  let style = '';
-  let labelStyle = '';
+  let style: string[] = [];
+  let labelStyle: string[] = [];
 
   if (stroke === 'dotted') {
     pattern = 'dotted';
-    style = 'fill:none;stroke-width:2px;stroke-dasharray:3;';
+    style = ['fill:none', 'stroke-width:2px', 'stroke-dasharray:3'];
   } else if (stroke === 'thick') {
     thickness = 'thick';
-    style = 'stroke-width: 3.5px;fill:none;';
+    style = ['stroke-width: 3.5px', 'fill:none'];
   } else {
-    style = defaultStyle ?? 'fill:none;';
+    style = defaultStyle ?? ['fill:none'];
     if (defaultLabelStyle !== undefined) {
       labelStyle = defaultLabelStyle;
     }
@@ -903,55 +911,54 @@ function getCurve(edgeInterpolate: unknown, edgesDefaultInterpolate: unknown, co
 function buildEdgeData(
   edge: Edge,
   defaults: {
-    defaultStyle?: string;
-    defaultLabelStyle?: string;
+    defaultStyle?: string[];
+    defaultLabelStyle?: string[];
     defaultInterpolate?: unknown;
     confCurve: unknown;
   },
   elkContext: ElkLayoutContext
 ) {
-  const edgeData: any = { style: '', labelStyle: '' };
-  edgeData.minlen = edge.length || 1;
-  edge.text = edge.label;
+  const edgeData: any = {};
+  edgeData.minlen = edge.minlen ?? edge.length ?? 1;
+  edgeData.text = edge.text ?? edge.label;
 
-  edgeData.arrowhead = edge.type === 'arrow_open' ? 'none' : 'normal';
+  edgeData.arrowhead = edge.arrowhead ?? (edge.type === 'arrow_open' ? 'none' : 'normal');
 
   const arrowMap = ARROW_MAP[edge.type ?? 'arrow_open'] ?? ARROW_MAP.arrow_open;
-  edgeData.arrowTypeStart = arrowMap[0];
-  edgeData.arrowTypeEnd = arrowMap[1];
+  edgeData.arrowTypeStart = edge.arrowTypeStart ?? arrowMap[0];
+  edgeData.arrowTypeEnd = edge.arrowTypeEnd ?? arrowMap[1];
 
   edgeData.startLabelRight = edge.startLabelRight;
   edgeData.endLabelLeft = edge.endLabelLeft;
 
   const strokeRes = computeStroke(edge.stroke, defaults.defaultStyle, defaults.defaultLabelStyle);
-  edgeData.thickness = strokeRes.thickness;
-  edgeData.pattern = strokeRes.pattern;
-  edgeData.style = (edgeData.style || '') + (strokeRes.style || '');
-  edgeData.labelStyle = (edgeData.labelStyle || '') + (strokeRes.labelStyle || '');
+  edgeData.thickness = edge.thickness ?? strokeRes.thickness;
+  edgeData.pattern = edge.pattern ?? strokeRes.pattern;
+  edgeData.style = edge.style ?? strokeRes.style;
+  edgeData.labelStyle = edge.labelStyle ?? strokeRes.labelStyle;
+  edgeData.classes = buildFallbackEdgeClasses(edge);
 
   edgeData.curve = elkContext.interpolateToCurve(
-    getCurve(edge.interpolate, defaults.defaultInterpolate, defaults.confCurve) as
+    getCurve(edge.curve ?? edge.interpolate, defaults.defaultInterpolate, defaults.confCurve) as
       | string
       | undefined,
     curveLinear
   );
 
-  const hasText = (edge?.text ?? '') !== '';
-  if (hasText) {
-    edgeData.arrowheadStyle = 'fill: #333';
-    edgeData.labelpos = 'c';
-  } else if (edge.style !== undefined) {
+  const hasText = (edgeData.text ?? '') !== '';
+  if (edge.arrowheadStyle !== undefined) {
+    edgeData.arrowheadStyle = edge.arrowheadStyle;
+  } else if (hasText || edge.style !== undefined) {
     edgeData.arrowheadStyle = 'fill: #333';
   }
+  edgeData.labelpos = edge.labelpos ?? (hasText ? 'c' : undefined);
 
   edgeData.labelType = edge.labelType;
-  edgeData.label = (edge?.text ?? '').replace(elkContext.common.lineBreakRegex, '\n');
+  edgeData.label = (edge.label ?? edgeData.text ?? '').replace(
+    elkContext.common.lineBreakRegex,
+    '\n'
+  );
 
-  if (edge.style === undefined) {
-    edgeData.style = edgeData.style ?? 'stroke: #333; stroke-width: 1.5px;fill:none;';
-  }
-
-  edgeData.labelStyle = edgeData.labelStyle.replace('color:', 'fill:');
   return edgeData;
 }
 

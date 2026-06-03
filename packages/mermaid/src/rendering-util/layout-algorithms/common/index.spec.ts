@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => {
   const labelElement = { attr: vi.fn() };
   const terminalElement = { attr: vi.fn() };
   const edgeLabels = new Map<string, typeof labelElement>();
-  const terminalLabels = new Map<string, { startLeft: typeof terminalElement }>();
+  const terminalLabels = new Map<string, Record<string, typeof terminalElement>>();
 
   return {
     callOrder,
@@ -70,6 +70,7 @@ vi.mock('../../rendering-elements/clusters.js', () => ({
 vi.mock('../../rendering-elements/edges.js', () => ({
   clear: mocks.clearEdges,
   edgeLabels: mocks.edgeLabels,
+  hasEdgeLabel: (edge: Edge) => Boolean(edge.label || edge.startLabelRight || edge.endLabelLeft),
   insertEdge: mocks.insertEdge,
   insertEdgeLabel: mocks.insertEdgeLabel,
   terminalLabels: mocks.terminalLabels,
@@ -178,6 +179,12 @@ beforeEach(() => {
   });
   mocks.insertEdgeLabel.mockImplementation((_rootGroups: unknown, renderedEdge: Edge) => {
     mocks.edgeLabels.set(renderedEdge.id, mocks.labelElement);
+    mocks.terminalLabels.set(renderedEdge.id, {
+      startLeft: mocks.terminalElement,
+      startRight: mocks.terminalElement,
+      endLeft: mocks.terminalElement,
+      endRight: mocks.terminalElement,
+    });
     return Promise.resolve({});
   });
 });
@@ -335,5 +342,23 @@ describe('paintLayoutData', () => {
 
     expect(mocks.insertEdgeLabel).toHaveBeenCalledWith(measured.groups.edgeLabels, labelledEdge);
     expect(mocks.labelElement.attr).toHaveBeenCalledWith('transform', 'translate(10, 22)');
+  });
+
+  it('inserts and positions terminal labels without a center edge label', async () => {
+    const { paintLayoutData } = await import('./index.js');
+    const terminalEdge = edge('terminal', {
+      label: '',
+      x: 0,
+      y: 0,
+      startLabelRight: 'source',
+      endLabelLeft: 'target',
+    } as Partial<Edge>);
+    const data = layout({ edges: [terminalEdge] });
+    const measured = measure();
+
+    await paintLayoutData(data, { measure: measured } as never);
+
+    expect(mocks.insertEdgeLabel).toHaveBeenCalledWith(measured.groups.edgeLabels, terminalEdge);
+    expect(mocks.terminalElement.attr).toHaveBeenCalledWith('transform', 'translate(5, 6)');
   });
 });

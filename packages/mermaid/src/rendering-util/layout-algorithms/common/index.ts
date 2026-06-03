@@ -10,6 +10,7 @@ import { clear as clearClusters, insertCluster } from '../../rendering-elements/
 import {
   clear as clearEdges,
   edgeLabels,
+  hasEdgeLabel,
   insertEdge,
   insertEdgeLabel,
   terminalLabels,
@@ -221,7 +222,7 @@ async function paintLayoutEdge(
     shouldSkipIntersect(edge, options)
   ) as EdgeRenderPaths | undefined;
 
-  if (edge.label) {
+  if (hasEdgeLabel(edge)) {
     if (!edgeLabels.has(edge.id)) {
       await insertEdgeLabel(groups.edgeLabels, edge);
     }

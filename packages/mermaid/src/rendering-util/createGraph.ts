@@ -2,7 +2,7 @@ import type { Selection } from 'd3';
 import * as graphlib from 'dagre-d3-es/src/graphlib/index.js';
 import type { LayoutData } from './types.js';
 import { getConfig } from '../diagram-api/diagramAPI.js';
-import { insertEdgeLabel } from './rendering-elements/edges.js';
+import { hasEdgeLabel, insertEdgeLabel } from './rendering-elements/edges.js';
 import { insertNode } from './rendering-elements/nodes.js';
 import { labelHelper } from './rendering-elements/shapes/util.js';
 
@@ -91,7 +91,7 @@ export async function createGraphWithElements(
   // Add edges to the graph.
 
   for (const edge of edgesToProcess) {
-    if (hasDom && edge.label) {
+    if (hasDom && hasEdgeLabel(edge)) {
       await insertEdgeLabel(edgeLabels, edge);
     }
     graph.setEdge(edge.start!, edge.end!, { ...edge }, edge.id);
