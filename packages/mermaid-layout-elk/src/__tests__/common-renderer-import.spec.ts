@@ -3,10 +3,10 @@ import {
   createCommonLayoutRenderer,
   paintLayoutData,
   type CommonLayoutRendererDefinition,
-} from '../../../mermaid/src/mermaid.js';
+} from 'mermaid';
 
-describe('Mermaid common layout renderer source export', () => {
-  it('is importable from the ELK layout package source tests', () => {
+describe('Mermaid common layout renderer package export', () => {
+  it('is importable from the Mermaid package', () => {
     const definition: CommonLayoutRendererDefinition = {
       runLayoutCore: () => undefined,
       paintLayout: () => undefined,

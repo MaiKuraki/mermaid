@@ -2,7 +2,7 @@ import {
   createCommonLayoutRenderer,
   type CommonLayoutRenderContext,
   type LayoutData,
-} from '../../mermaid/src/mermaid.js';
+} from 'mermaid';
 // @ts-ignore TODO: Investigate D3 issue
 import { curveLinear } from 'd3';
 import ELK from 'elkjs/lib/elk.bundled.js';
