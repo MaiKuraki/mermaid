@@ -4,6 +4,7 @@ import {
   buildSubgraphLayoutOptions,
   dir2ElkDirection,
   ensureEndMarkerSegmentLength,
+  runElkLayoutCore,
 } from '../render.js';
 
 describe('buildSubgraphLayoutOptions', () => {
@@ -109,6 +110,83 @@ describe('buildElkGraphFromLayoutData', () => {
     const edge = state.elkGraph.edges[0];
     expect(edge.labels[0]).toMatchObject({ width: 22, height: 10, text: 'go' });
     expect(edge.labelEl).toBeUndefined();
+  });
+});
+
+describe('runElkLayoutCore', () => {
+  it('keeps child node positions relative to the subgraph top-left', async () => {
+    const data = {
+      direction: 'TB',
+      config: {
+        elk: {
+          mergeEdges: false,
+          nodePlacementStrategy: 'BRANDES_KOEPF',
+          forceNodeModelOrder: false,
+          considerModelOrder: 'NODES_AND_EDGES',
+        },
+      },
+      nodes: [
+        {
+          id: 'hello',
+          isGroup: true,
+          label: 'hello',
+          padding: 8,
+          labelBBox: { width: 29.59375, height: 21 },
+        },
+        {
+          id: 'C',
+          isGroup: false,
+          parentId: 'hello',
+          width: 42.125,
+          height: 45,
+          label: 'C',
+          shape: 'rect',
+        },
+        {
+          id: 'D',
+          isGroup: false,
+          parentId: 'hello',
+          width: 42.125,
+          height: 45,
+          label: 'D',
+          shape: 'rect',
+        },
+        { id: 'A', isGroup: false, width: 41.34375, height: 45, label: 'A', shape: 'rect' },
+        { id: 'B', isGroup: false, width: 41.34375, height: 45, label: 'B', shape: 'rect' },
+      ],
+      edges: [
+        { id: 'L_A_B_0', start: 'A', end: 'B', type: 'arrow_point' },
+        { id: 'L_C_D_0', start: 'C', end: 'D', type: 'arrow_point' },
+      ],
+    } as any;
+
+    const log = {
+      debug: () => undefined,
+      error: () => undefined,
+      info: () => undefined,
+      warn: () => undefined,
+    };
+    const context = {
+      helpers: {
+        common: { lineBreakRegex: /<br\s*\/?>/gi },
+        getConfig: () => ({ flowchart: { wrappingWidth: 200 }, curve: undefined }),
+        interpolateToCurve: (curve: unknown) => curve,
+        log,
+      },
+      options: { algorithm: 'elk.layered' },
+    } as any;
+
+    const graph = await runElkLayoutCore(data, context);
+    const group = graph.children?.find((node: any) => node.id === 'hello');
+    const child = group?.children?.find((node: any) => node.id === 'C');
+    const layoutChild = data.nodes.find((node: any) => node.id === 'C');
+
+    expect(group).toBeDefined();
+    expect(child).toBeDefined();
+    expect(child.offset.x).toBeCloseTo(group.offset.posX);
+    expect(child.offset.y).toBeCloseTo(group.offset.posY);
+    expect(layoutChild.x).toBeCloseTo(child.offset.posX + child.width / 2);
+    expect(layoutChild.y).toBeCloseTo(child.offset.posY + child.height / 2);
   });
 });
 

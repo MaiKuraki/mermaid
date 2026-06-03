@@ -132,6 +132,7 @@ export function buildSubgraphLayoutOptions(
     'nodeLabels.placement': '[H_CENTER V_TOP, INSIDE]',
     'elk.layered.mergeEdges': elkConfig?.mergeEdges,
     'nodePlacement.strategy': elkConfig?.nodePlacementStrategy,
+    'elk.layered.nodePlacement.bk.fixedAlignment': 'RIGHTDOWN',
   };
   if (node.dir) {
     layoutOptions['elk.algorithm'] = algorithm;
@@ -223,6 +224,7 @@ function createRootElkGraph(data4Layout: LayoutData, algorithm: string | undefin
       'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
       'elk.algorithm': algorithm,
       'nodePlacement.strategy': data4Layout.config.elk?.nodePlacementStrategy,
+      'elk.layered.nodePlacement.bk.fixedAlignment': 'RIGHTDOWN',
       'elk.layered.mergeEdges': data4Layout.config.elk?.mergeEdges,
       'elk.direction': 'DOWN',
       'spacing.baseValue': 40,
@@ -594,8 +596,8 @@ function applyElkNodePositions(
         node.children ?? [],
         layoutState,
         nodeById,
-        relX + node.x,
-        relY + node.y,
+        offset.posX,
+        offset.posY,
         depth + 1,
         log
       );
