@@ -215,6 +215,44 @@ describe('buildElkGraphFromLayoutData', () => {
 });
 
 describe('runElkLayoutCore', () => {
+  it('orders parent clusters before child clusters after ELK layout for common painting', async () => {
+    const data = {
+      direction: 'TB',
+      config: { elk: {} },
+      nodes: [
+        {
+          id: 'child',
+          isGroup: true,
+          parentId: 'parent',
+          label: 'child',
+          padding: 8,
+          labelBBox: { width: 30, height: 16 },
+        },
+        {
+          id: 'parent',
+          isGroup: true,
+          label: 'parent',
+          padding: 8,
+          labelBBox: { width: 40, height: 16 },
+        },
+        {
+          id: 'leaf',
+          isGroup: false,
+          parentId: 'child',
+          width: 40,
+          height: 20,
+          label: 'leaf',
+          shape: 'rect',
+        },
+      ],
+      edges: [],
+    } as any;
+
+    await runElkLayoutCore(data, elkRenderContext);
+
+    expect(data.nodes.map((node: any) => node.id)).toEqual(['parent', 'child', 'leaf']);
+  });
+
   it('keeps child node positions relative to the subgraph top-left', async () => {
     const data = {
       direction: 'TB',

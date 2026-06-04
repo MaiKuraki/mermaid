@@ -1,4 +1,4 @@
-import {
+import mermaid, {
   createCommonLayoutRenderer,
   type CommonLayoutRenderContext,
   type LayoutData,
@@ -150,6 +150,7 @@ export function prepareLayoutForElk(
   context: CommonLayoutRenderContext<ElkPreparedLayout>
 ): ElkPreparedLayout {
   const elkContext = getElkLayoutContext(context);
+  syncElkPackageConfig(elkContext);
   applyElkEdgeRenderData(data4Layout, elkContext);
   return { algorithm: elkContext.algorithm };
 }
@@ -167,6 +168,7 @@ export async function runElkLayoutCore(
 
   const graph = await runElkLayout(elk, layoutState.elkGraph, elkContext.log);
   applyElkLayoutResult(data4Layout, graph, layoutState, elkContext.log);
+  orderNodesForElkPaint(data4Layout.nodes);
   return graph;
 }
 
@@ -197,6 +199,47 @@ export const render = createCommonLayoutRenderer<ElkLayoutResult, ElkPreparedLay
     skipIntersect: true,
   },
 });
+
+function syncElkPackageConfig(elkContext: ElkLayoutContext): void {
+  mermaid.mermaidAPI.setConfig(elkContext.getConfig());
+}
+
+function orderNodesForElkPaint(nodes: LayoutData['nodes']): void {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+  nodes.sort((a, b) => {
+    if (a.isGroup !== b.isGroup) {
+      return a.isGroup ? -1 : 1;
+    }
+
+    if (a.isGroup && b.isGroup) {
+      return getGroupDepth(a, nodeById) - getGroupDepth(b, nodeById);
+    }
+
+    return 0;
+  });
+}
+
+function getGroupDepth(
+  node: LayoutData['nodes'][number],
+  nodeById: Map<string, LayoutData['nodes'][number]>
+): number {
+  let depth = 0;
+  const visited = new Set<string>();
+  let parentId = node.parentId;
+
+  while (parentId && !visited.has(parentId)) {
+    visited.add(parentId);
+    const parent = nodeById.get(parentId);
+    if (!parent?.isGroup) {
+      break;
+    }
+    depth++;
+    parentId = parent.parentId;
+  }
+
+  return depth;
+}
 
 function getElkLayoutContext(
   context: CommonLayoutRenderContext<ElkPreparedLayout>
@@ -341,7 +384,7 @@ function createElkNode(node: Node): NodeWithVertex {
 }
 
 function getMeasuredLabelData(node: Node, config: any): LabelData {
-  const existing = (node as Node & { labelData?: LabelData }).labelData;
+  const existing = (node as unknown as { labelData?: LabelData }).labelData;
   if (existing) {
     return existing;
   }
@@ -589,9 +632,12 @@ function applyElkNodePositions(
         ? Math.max(node.width, node.labelData?.width ?? 0)
         : node.width;
       layoutNode.height = node.height;
-      (layoutNode as Node & { labelData?: LabelData; labels?: unknown[] }).labelData =
-        node.labelData;
-      (layoutNode as Node & { labels?: unknown[] }).labels = node.labels;
+      const layoutNodeLabels = layoutNode as unknown as {
+        labelData?: LabelData;
+        labels?: unknown[];
+      };
+      layoutNodeLabels.labelData = node.labelData;
+      layoutNodeLabels.labels = node.labels;
     }
 
     if (node.isGroup) {
