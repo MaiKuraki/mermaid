@@ -1,4 +1,4 @@
-import type { Positions, SVG } from '../../../diagram-api/types.js';
+import type { SVG } from '../../../diagram-api/types.js';
 import type { InternalHelpers } from '../../../internals.js';
 import type { D3Selection } from '../../../types.js';
 import { log } from '../../../logger.js';
@@ -39,7 +39,6 @@ export interface CommonLayoutRenderContext<PreparedLayout = unknown> {
   element: D3Selection<SVGElement>;
   helpers?: InternalHelpers;
   options?: RenderOptions;
-  positions?: Positions;
   preparedLayout?: PreparedLayout;
 }
 
@@ -111,8 +110,7 @@ export function createCommonLayoutRenderer<
     data4Layout: LayoutData,
     svg: SVG,
     helpers?: InternalHelpers,
-    options?: RenderOptions,
-    positions?: Positions
+    options?: RenderOptions
   ): Promise<void> {
     const element = svg.select('g') as unknown as D3Selection<SVGElement>;
     insertMarkers(element, data4Layout.markers, data4Layout.type, data4Layout.diagramId);
@@ -124,7 +122,6 @@ export function createCommonLayoutRenderer<
       element, // root SVG <g>
       helpers, // Mermaid helper functions
       options, // { algorithm: "elk.layered" }
-      positions,
     };
 
     // Algorithm-specific transformations onto the original parsed layout data so the algorithm-specific
